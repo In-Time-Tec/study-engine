@@ -91,7 +91,7 @@ progress; the question banks themselves are never modified by the study loop.
 - **`study-engine-cli/`** — Rust: CLI study loop, FSRS scheduling, SQLite
   persistence, and an Axum HTTP API (`serve`) that the UI talks to. Also
   generates TypeScript wire types via `ts-rs`.
-- **`study-engine-ui/`** — Svelte 4 + Vite frontend. Pure study logic lives in
+- **`study-engine-ui/`** — Svelte 5 + Vite frontend. Pure study logic lives in
   `studySessionState.ts`; wire types under `src/lib/generated/` are produced by
   the backend and must not be hand-edited; `api.ts` validates every response
   against Zod schemas at the fetch boundary.
