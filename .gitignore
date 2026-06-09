@@ -1,0 +1,40 @@
+# Rust
+study-engine-cli/target/
+study-engine-cli/cobertura.xml
+study-engine-cli/tarpaulin-report.html
+
+# Node
+node_modules/
+study-engine-ui/node_modules/
+study-engine-ui/dist/
+study-engine-ui/coverage/
+
+# Playwright e2e artifacts
+study-engine-ui/test-results/
+study-engine-ui/playwright-report/
+study-engine-ui/.last-run.json
+# Temp bank written by the settings e2e upload test (cleaned up in-test)
+study-engine-ui/e2e/fixtures/uploaded-*.json
+
+# Stray root-level package files (deps live in study-engine-ui/)
+package.json
+package-lock.json
+node_modules/
+
+# OS
+.DS_Store
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Study group tracking (contains real names, not part of the published tool)
+course-progress.csv
+
+# Personal study material (kept locally, not part of the published tool)
+Attachments/
+CCA/
+Learning.md
+
+# CCA-F question bank — excluded pending a provenance/licensing decision
+# (substantially derived from Anthropic's exam guide). Kept locally for personal use.
+questions/

@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": []
+  },
+  "include": [
+    "src/lib/generated/**/*.ts",
+    "src/lib/schemas.ts",
+    "src/lib/types.ts",
+    "src/lib/api.ts"
+  ],
+  "exclude": ["node_modules"]
+}

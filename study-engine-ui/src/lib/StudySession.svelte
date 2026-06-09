@@ -1,0 +1,334 @@
+<script lang="ts">
+  import { onMount, untrack } from 'svelte'
+  import { fade, fly } from 'svelte/transition'
+  import { cubicOut } from 'svelte/easing'
+  import { fetchDue, fetchStats, postReview, postSession } from './api'
+  import { barClass, studyCardLabel } from './presentation'
+  import {
+    correctCount as countCorrect,
+    domainBreakdown as summarizeDomains,
+    missedCards as selectMissedCards,
+    recentStreak as countRecentStreak,
+    sessionAccuracy,
+    streakMessage as messageForStreak
+  } from './sessionSelectors'
+  import { applyRating, correctAnswerForCard, isWrappedCard, keyIntent, studyFetchOptions } from './studySessionState'
+  import type { AnyCard, CardState, DomainStat, Question, SessionResult, StudyMode, StudyPhase } from './types'
+
+  let {
+    cert = 'cca-f',
+    mode = 'due' as StudyMode,
+    domain = null as number | null,
+    tag = null as string | null,
+    questionIds = null as string[] | null,
+    ondone
+  }: {
+    cert?: string
+    mode?: StudyMode
+    domain?: number | null
+    tag?: string | null
+    questionIds?: string[] | null
+    ondone?: () => void
+  } = $props()
+
+  // loading → question → revealed → (next question | done) → summary
+  let phase: StudyPhase = $state('loading')
+  let cards: AnyCard[] = $state([])
+  let current: number = $state(0)
+  let selected: string | null = $state(null)
+  let sessionResults: SessionResult[] = $state([])
+  let error: string | null = $state(null)
+  let saveError: string | null = $state(null)
+  let saving: boolean = $state(false)
+
+  let dueCount: number = $state(0)
+  let newCount: number = $state(0)
+
+  // The Study tab is self-sufficient: it owns its own mode and domain rather
+  // than depending solely on the props it was launched with. The props seed the
+  // initial values (e.g. a Dashboard domain-bar deep-link), then the in-session
+  // toggle and selector drive reloads. Hidden in 'custom' mode, which studies an
+  // explicit id list handed over from Browse.
+  // untrack() reads the initial prop value without establishing a reactive dependency —
+  // these are intentional one-time seeds, not derived values.
+  const interactive: boolean = untrack(() => mode !== 'custom')
+  let controlMode: Exclude<StudyMode, 'custom'> = $state(untrack(() => mode === 'all' ? 'all' : 'due'))
+  let controlDomain: number | null = $state(untrack(() => domain))
+  let domains: DomainStat[] = $state([])
+
+  async function loadSession(): Promise<void> {
+    phase = 'loading'
+    current = 0
+    selected = null
+    sessionResults = []
+    saveError = null
+    saving = false
+    try {
+      const data = await fetchDue(studyFetchOptions({
+        cert,
+        mode: interactive ? controlMode : mode,
+        domain: interactive ? controlDomain : domain,
+        tag,
+        questionIds
+      }))
+      cards = data.cards
+      dueCount = data.dueCount
+      newCount = data.newCount
+      phase = cards.length ? 'question' : 'empty'
+    } catch (e) {
+      error = (e as Error).message
+      phase = 'error'
+    }
+  }
+
+  onMount(() => {
+    // Populate the domain selector. Failure (or no stats) just leaves the
+    // selector at "All domains" — it must never block the study session itself.
+    if (interactive) {
+      Promise.resolve(fetchStats(cert))
+        .then(s => { domains = s?.domains ?? [] })
+        .catch(() => { domains = [] })
+    }
+    return loadSession()
+  })
+
+  function setMode(m: Exclude<StudyMode, 'custom'>): void {
+    if (controlMode === m) return
+    controlMode = m
+    loadSession()
+  }
+
+  function selectAnswer(letter: string): void {
+    if (phase !== 'question') return
+    selected = letter
+    phase = 'revealed'
+  }
+
+  async function rate(rating: number): Promise<void> {
+    /* istanbul ignore next */
+    if (phase !== 'revealed' || saving) return
+
+    const next = applyRating({ cards, current, selected, sessionResults }, rating)
+    saving = true
+    saveError = null
+
+    try {
+      await postReview({
+        cardId: next.result.cardId,
+        cert,
+        rating,
+        isCorrect: next.result.isCorrect
+      })
+
+      sessionResults = next.sessionResults
+      current = next.current
+      selected = next.selected
+      phase = next.phase
+
+      if (next.shouldFinish) {
+        await finishSession(next.sessionResults)
+      }
+    } catch (e) {
+      saveError = (e as Error).message
+    } finally {
+      saving = false
+    }
+  }
+
+  async function finishSession(results = sessionResults): Promise<void> {
+    const total = results.length
+    const correct = countCorrect(results)
+    /* istanbul ignore else */
+    if (total > 0) {
+      await postSession({ cert, total, correct })
+    }
+  }
+
+  function handleKey(e: KeyboardEvent): void {
+    const intent = keyIntent(phase, e.key, q?.options, selected === correct)
+    if (!intent) return
+    if (e.key === ' ' || e.key === 'Enter') e.preventDefault()
+    if (intent.kind === 'select') selectAnswer(intent.letter)
+    else rate(intent.rating)
+  }
+
+  let currentCard = $derived(cards[current] as AnyCard | undefined)
+  let q = $derived(currentCard ? (isWrappedCard(currentCard) ? currentCard.question : currentCard as Question) : null)
+  let cs = $derived((currentCard && isWrappedCard(currentCard) ? currentCard.cardState : null) as CardState | null)
+  let correct = $derived(correctAnswerForCard(currentCard))
+  let totalCards = $derived(cards.length)
+  let correctCount = $derived(countCorrect(sessionResults))
+  let accuracy = $derived(sessionAccuracy(sessionResults))
+  let recentStreak = $derived(countRecentStreak(sessionResults, phase === 'revealed' && selected === correct))
+  let streakMessage = $derived(messageForStreak(recentStreak))
+  let domainBreakdown = $derived(phase === 'summary' ? summarizeDomains(sessionResults) : [])
+  let missedCards = $derived(phase === 'summary' ? selectMissedCards(sessionResults) : [])
+
+  const LETTERS = ['A', 'B', 'C', 'D']
+</script>
+
+<svelte:window onkeydown={handleKey} />
+
+{#if interactive && phase !== 'loading' && phase !== 'error'}
+  <div class="study-controls">
+    <div class="seg-toggle" role="group" aria-label="Study mode">
+      <button class:active={controlMode === 'due'} onclick={() => setMode('due')}>Due</button>
+      <button class:active={controlMode === 'all'} onclick={() => setMode('all')}>All</button>
+    </div>
+    {#if controlMode === 'due'}
+      <select class="filter-select" aria-label="Domain" bind:value={controlDomain} onchange={loadSession}>
+        <option value={null}>All domains</option>
+        {#each domains as d}
+          <option value={d.id}>{d.name}</option>
+        {/each}
+      </select>
+    {/if}
+  </div>
+{/if}
+
+{#if phase === 'loading'}
+  <div class="loading">loading session…</div>
+
+{:else if phase === 'error'}
+  <div class="empty">Error: {error}</div>
+
+{:else if phase === 'empty'}
+  <div class="summary-box">
+    <div class="summary-score">✓</div>
+    <div class="summary-label">Nothing due today.</div>
+    <button class="btn" onclick={() => ondone?.()}>Back to Dashboard</button>
+  </div>
+
+{:else if phase === 'question' || phase === 'revealed'}
+  {@const isCorrect = selected === correct}
+
+  <div class="session-progress">
+    <span>Card <span>{current + 1}</span> / {totalCards}</span>
+    <span style="color:var(--dim)">
+      {dueCount > 0 ? `${dueCount} due` : ''}
+      {dueCount > 0 && newCount > 0 ? ' + ' : ''}
+      {newCount > 0 ? `${newCount} new` : ''}
+    </span>
+  </div>
+
+  <div class="session-bar-track">
+    {#each cards as _, i}
+      <div class="session-bar-segment {sessionResults[i] ? (sessionResults[i].isCorrect ? 'seg-correct' : 'seg-wrong') : ''}"></div>
+    {/each}
+  </div>
+
+  {#key current}
+    <div class="panel" in:fly={{ x: 16, duration: 200, easing: cubicOut }}>
+      <div class="q-header">
+        <span>D{q.domain} — {q.scenario}</span>
+        <span class="badge {cs?.reps >= 3 ? 'badge-ok' : (cs?.due ? 'badge-due' : 'badge-new')}">
+          {studyCardLabel(cs)}
+        </span>
+      </div>
+
+      <div class="q-text">{q.question}</div>
+
+      <ul class="option-list">
+        {#each LETTERS as letter}
+          {#if q.options && q.options[letter]}
+            <li>
+              <button
+                class="option-item
+                  {phase === 'revealed' && letter === correct ? 'reveal-correct' : ''}
+                  {phase === 'revealed' && letter !== correct ? 'reveal-wrong' : ''}
+                  {phase === 'revealed' && letter === selected && letter === correct ? 'selected-correct' : ''}
+                  {phase === 'revealed' && letter === selected && letter !== correct ? 'selected-wrong' : ''}
+                "
+                disabled={phase === 'revealed'}
+                onclick={() => selectAnswer(letter)}
+              >
+                <span class="option-key">{letter}</span>
+                <span>{q.options[letter]}</span>
+              </button>
+            </li>
+          {/if}
+        {/each}
+      </ul>
+
+      {#if phase === 'revealed'}
+        <div class="result-banner {isCorrect ? 'result-correct' : 'result-wrong'}" transition:fly={{ y: -6, duration: 150 }}>
+          {isCorrect ? '✓ Correct' : `✗ Incorrect — correct answer: ${correct}`}
+        </div>
+
+        {#if streakMessage}
+          <div class="streak-msg" transition:fade={{ duration: 200 }}>{streakMessage}</div>
+        {/if}
+
+        <div class="explanation" transition:fade={{ duration: 120, delay: 80 }}>{q.explanation}</div>
+
+        {#if saveError}
+          <div class="empty">Save failed: {saveError}</div>
+        {/if}
+
+        {#if q.tags && q.tags.length}
+          <div class="tags" transition:fade={{ duration: 120, delay: 80 }}>
+            {#each q.tags as tag}
+              <span class="tag">#{tag}</span>
+            {/each}
+          </div>
+        {/if}
+
+        <div class="rating-row" transition:fade={{ duration: 120, delay: 80 }}>
+          <button class="btn btn-again" disabled={saving} onclick={() => rate(1)}>Again</button>
+          {#if isCorrect}
+            <button class="btn btn-good" disabled={saving} onclick={() => rate(3)}>Good</button>
+            <button class="btn btn-easy" disabled={saving} onclick={() => rate(4)}>Easy</button>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {/key}
+
+{:else if phase === 'summary'}
+  <div class="summary-box">
+    <div class="summary-score">{accuracy}%</div>
+    <div class="summary-label">{correctCount} / {sessionResults.length} correct</div>
+  </div>
+
+  {#if saveError}
+    <div class="empty">Save failed: {saveError}</div>
+  {/if}
+
+  {#if domainBreakdown.length > 0}
+    <div class="panel" style="margin-top:16px;">
+      <div class="panel-title">By Domain</div>
+      {#each domainBreakdown as d}
+        <div class="bar-row">
+          <span class="bar-label">D{d.domain}</span>
+          <div class="bar-track">
+            <div class="bar-fill {barClass(d.pct)}" style="width:{d.pct}%"></div>
+          </div>
+          <span class="bar-pct">{d.correct}/{d.total}</span>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
+  {#if missedCards.length > 0}
+    <div class="panel" style="margin-top:12px;">
+      <div class="panel-title">Missed</div>
+      <table class="table">
+        <tbody>
+          {#each missedCards as r}
+            <tr>
+              <td class="missed-text">{(r.questionText ?? '').slice(0, 80)}{(r.questionText ?? '').length > 80 ? '…' : ''}</td>
+              <td class="missed-answer">you: {r.selected} · correct: {r.correctAnswer}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {/if}
+
+  <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:16px;">
+    <button class="btn btn-primary" onclick={() => ondone?.()}>Back to Dashboard</button>
+    {#if controlMode === 'due' && interactive}
+      <button class="btn" onclick={loadSession}>Study Again</button>
+    {/if}
+  </div>
+{/if}

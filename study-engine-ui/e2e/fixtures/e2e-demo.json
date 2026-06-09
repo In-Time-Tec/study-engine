@@ -1,0 +1,29 @@
+{
+  "cert": "e2e-demo",
+  "name": "E2E Demo Bank",
+  "domains": {
+    "1": "Arithmetic"
+  },
+  "questions": [
+    {
+      "id": "demo-1",
+      "domain": 1,
+      "scenario": "A warm-up question used only by the end-to-end test.",
+      "question": "What is 2 + 2?",
+      "options": { "A": "Four", "B": "Three", "C": "Five", "D": "Twenty-two" },
+      "answer": "A",
+      "explanation": "2 + 2 = 4.",
+      "tags": ["addition"]
+    },
+    {
+      "id": "demo-2",
+      "domain": 1,
+      "scenario": "A second warm-up question so the session has more than one card.",
+      "question": "What is 3 + 1?",
+      "options": { "A": "Four", "B": "Two", "C": "Six", "D": "Nine" },
+      "answer": "A",
+      "explanation": "3 + 1 = 4.",
+      "tags": ["addition"]
+    }
+  ]
+}

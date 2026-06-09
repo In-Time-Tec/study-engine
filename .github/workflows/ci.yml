@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend (cargo test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: study-engine-cli
+      - name: Run tests
+        working-directory: study-engine-cli
+        run: cargo test
+      - name: Generated TS bindings are up to date
+        # `cargo test` regenerates the wire-contract bindings; fail if the
+        # committed output drifts from the Rust structs that produce it.
+        run: git diff --exit-code study-engine-ui/src/lib/generated
+
+  frontend:
+    name: Frontend (vitest + coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: study-engine-ui/package-lock.json
+      - name: Install dependencies
+        working-directory: study-engine-ui
+        run: npm ci
+      - name: Typecheck wire contract
+        # Verifies the Zod schemas still match the generated wire types
+        # (the `satisfies z.ZodType<T>` pins in schemas.ts).
+        working-directory: study-engine-ui
+        run: npm run typecheck
+      - name: Run tests with coverage
+        working-directory: study-engine-ui
+        run: npm run test:coverage
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: study-engine-cli
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: study-engine-ui/package-lock.json
+      - name: Install dependencies
+        working-directory: study-engine-ui
+        run: npm ci
+      - name: Build backend
+        # Pre-build so the Playwright webServer launches the binary immediately.
+        run: cargo build --manifest-path study-engine-cli/Cargo.toml
+      - name: Install Playwright browser
+        working-directory: study-engine-ui
+        run: npx playwright install --with-deps chromium
+      - name: Run e2e
+        working-directory: study-engine-ui
+        run: npm run e2e

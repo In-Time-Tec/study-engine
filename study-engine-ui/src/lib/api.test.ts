@@ -1,0 +1,214 @@
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import {
+  deleteBank,
+  fetchBanks,
+  fetchCerts,
+  fetchDue,
+  fetchQuestions,
+  fetchSessions,
+  fetchStats,
+  postReview,
+  postSession,
+  uploadBank
+} from './api'
+
+const fetchMock = vi.fn()
+
+function ok(body: unknown): Response {
+  return { ok: true, status: 200, json: () => Promise.resolve(body) } as unknown as Response
+}
+
+function notOk(body: unknown, status = 500): Response {
+  return { ok: false, status, json: () => Promise.resolve(body) } as unknown as Response
+}
+
+function lastCall(): [string, RequestInit | undefined] {
+  return fetchMock.mock.calls[fetchMock.mock.calls.length - 1] as [string, RequestInit | undefined]
+}
+function lastUrl(): string {
+  return lastCall()[0]
+}
+
+beforeEach(() => {
+  fetchMock.mockReset()
+  vi.stubGlobal('fetch', fetchMock)
+})
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('GET endpoints', () => {
+  test('fetchCerts returns the certs array', async () => {
+    fetchMock.mockResolvedValue(ok({ certs: ['cca-f', 'aws-saa'] }))
+    expect(await fetchCerts()).toEqual(['cca-f', 'aws-saa'])
+    expect(lastUrl()).toBe('/api/certs')
+  })
+
+  test('fetchStats defaults the cert and accepts an override', async () => {
+    fetchMock.mockResolvedValue(ok({
+      cert: 'cca-f', certName: 'CCA', total: 1, introduced: 0, dueToday: 0,
+      newAvailable: 0, mastered: 0, domains: [], tags: [], sessions: []
+    }))
+    await fetchStats()
+    expect(lastUrl()).toBe('/api/stats?cert=cca-f')
+    await fetchStats('aws-saa')
+    expect(lastUrl()).toBe('/api/stats?cert=aws-saa')
+  })
+
+  test('fetchDue omits optional params by default', async () => {
+    fetchMock.mockResolvedValue(ok({ cards: [], dueCount: 0, newCount: 0, newRemaining: 0, mode: 'study' }))
+    await fetchDue()
+    const url = lastUrl()
+    expect(url).toContain('cert=cca-f')
+    expect(url).toContain('new=5')
+    expect(url).not.toContain('domain=')
+    expect(url).not.toContain('tag=')
+    expect(url).not.toContain('ids=')
+    expect(url).not.toContain('all=')
+  })
+
+  test('fetchDue includes every optional param when provided', async () => {
+    fetchMock.mockResolvedValue(ok({ cards: [], dueCount: 0, newCount: 0, newRemaining: 0, mode: 'study' }))
+    await fetchDue({ cert: 'x', maxNew: 10, domain: 3, tag: 'tools', ids: ['q1', 'q2'], all: true })
+    const url = lastUrl()
+    expect(url).toContain('new=10')
+    expect(url).toContain('domain=3')
+    expect(url).toContain('tag=tools')
+    expect(url).toContain('ids=q1%2Cq2')
+    expect(url).toContain('all=true')
+  })
+
+  test('fetchDue treats an empty ids array as no filter', async () => {
+    fetchMock.mockResolvedValue(ok({ cards: [], dueCount: 0, newCount: 0, newRemaining: 0, mode: 'study' }))
+    await fetchDue({ ids: [] })
+    expect(lastUrl()).not.toContain('ids=')
+  })
+
+  test('fetchQuestions omits and includes optional filters', async () => {
+    fetchMock.mockResolvedValue(ok({ cert: 'cca-f', certName: 'CCA', domains: {}, questions: [] }))
+    await fetchQuestions()
+    let url = lastUrl()
+    expect(url).not.toContain('domain=')
+    expect(url).not.toContain('tag=')
+    expect(url).not.toContain('search=')
+
+    await fetchQuestions({ domain: 1, tag: 'agents', search: 'mcp' })
+    url = lastUrl()
+    expect(url).toContain('domain=1')
+    expect(url).toContain('tag=agents')
+    expect(url).toContain('search=mcp')
+  })
+
+  test('fetchSessions defaults and overrides the limit', async () => {
+    fetchMock.mockResolvedValue(ok({ sessions: [] }))
+    await fetchSessions()
+    expect(lastUrl()).toContain('limit=30')
+    await fetchSessions({ limit: 5 })
+    expect(lastUrl()).toContain('limit=5')
+  })
+})
+
+describe('POST endpoints', () => {
+  test('postReview posts the review payload', async () => {
+    fetchMock.mockResolvedValue(ok({}))
+    await postReview({ cardId: 'q1', rating: 3, isCorrect: true })
+    const [url, init] = lastCall()
+    expect(url).toBe('/api/review')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(init?.body as string)).toEqual({
+      cardId: 'q1',
+      cert: 'cca-f',
+      rating: 3,
+      isCorrect: true
+    })
+  })
+
+  test('postSession posts the session payload', async () => {
+    fetchMock.mockResolvedValue(ok({}))
+    await postSession({ total: 10, correct: 8 })
+    const [url, init] = lastCall()
+    expect(url).toBe('/api/session')
+    expect(JSON.parse(init?.body as string)).toEqual({ cert: 'cca-f', total: 10, correct: 8 })
+  })
+})
+
+describe('bank management', () => {
+  test('fetchBanks returns the banks array', async () => {
+    fetchMock.mockResolvedValue(ok({ banks: [{ name: 'cca-f', questionCount: 60 }] }))
+    expect(await fetchBanks()).toEqual([{ name: 'cca-f', questionCount: 60 }])
+    expect(lastUrl()).toBe('/api/banks')
+  })
+
+  test('uploadBank posts the payload and returns the refreshed certs', async () => {
+    fetchMock.mockResolvedValue(ok({ certs: ['cca-f', 'newbank'] }))
+    const result = await uploadBank('newbank', '{"x":1}')
+    expect(result).toEqual({ ok: true, certs: ['cca-f', 'newbank'] })
+    const [url, init] = lastCall()
+    expect(url).toBe('/api/banks')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(init?.body as string)).toEqual({
+      name: 'newbank',
+      content: '{"x":1}',
+      overwrite: false
+    })
+  })
+
+  test('uploadBank forwards the overwrite flag', async () => {
+    fetchMock.mockResolvedValue(ok({ certs: ['cca-f'] }))
+    await uploadBank('cca-f', '{}', true)
+    expect(JSON.parse(lastCall()[1]?.body as string).overwrite).toBe(true)
+  })
+
+  test('uploadBank reports a 409 as a conflict instead of throwing', async () => {
+    fetchMock.mockResolvedValue(notOk({ error: 'already exists' }, 409))
+    expect(await uploadBank('cca-f', '{}')).toEqual({ ok: false, conflict: true })
+  })
+
+  test('uploadBank still throws on other errors', async () => {
+    fetchMock.mockResolvedValue(notOk({ error: 'is not in options' }, 400))
+    await expect(uploadBank('bad', '{}')).rejects.toThrow('is not in options')
+  })
+
+  test('deleteBank issues a DELETE with an encoded name and returns certs', async () => {
+    fetchMock.mockResolvedValue(ok({ certs: ['cca-f'] }))
+    expect(await deleteBank('aws saa')).toEqual(['cca-f'])
+    const [url, init] = lastCall()
+    expect(url).toBe('/api/banks/aws%20saa')
+    expect(init?.method).toBe('DELETE')
+  })
+})
+
+describe('error handling', () => {
+  test('throws the server-provided error message', async () => {
+    fetchMock.mockResolvedValue(notOk({ error: 'bank not found' }, 404))
+    await expect(fetchCerts()).rejects.toThrow('bank not found')
+  })
+
+  test('falls back to the HTTP status when no error message is present', async () => {
+    fetchMock.mockResolvedValue(notOk({}, 500))
+    await expect(fetchStats()).rejects.toThrow('HTTP 500')
+  })
+
+  test('falls back to the HTTP status when the error body is not JSON', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: () => Promise.reject(new Error('not json'))
+    } as unknown as Response)
+    await expect(fetchStats()).rejects.toThrow('HTTP 503')
+  })
+})
+
+describe('boundary validation', () => {
+  test('rejects a 200 response whose shape violates the wire contract', async () => {
+    // dueCount/newCount missing — silently flowed through as undefined before
+    // schema validation was added at the boundary.
+    fetchMock.mockResolvedValue(ok({ cards: [] }))
+    await expect(fetchDue()).rejects.toThrow()
+  })
+
+  test('rejects a response with a wrong field type', async () => {
+    fetchMock.mockResolvedValue(ok({ certs: 'not-an-array' }))
+    await expect(fetchCerts()).rejects.toThrow()
+  })
+})
