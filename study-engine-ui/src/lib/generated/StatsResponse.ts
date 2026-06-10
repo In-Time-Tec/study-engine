@@ -3,4 +3,4 @@ import type { DomainStat } from "./DomainStat";
 import type { SessionItem } from "./SessionItem";
 import type { TagStat } from "./TagStat";
 
-export type StatsResponse = { cert: string, certName: string, total: number, introduced: number, dueToday: number, newAvailable: number, mastered: number, domains: Array<DomainStat>, tags: Array<TagStat>, sessions: Array<SessionItem>, };
+export type StatsResponse = { cert: string, certName: string, total: number, introduced: number, dueToday: number, nextDue: string | null, newAvailable: number, mastered: number, domains: Array<DomainStat>, tags: Array<TagStat>, sessions: Array<SessionItem>, };

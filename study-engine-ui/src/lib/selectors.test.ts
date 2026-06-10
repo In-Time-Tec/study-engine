@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'vitest'
 import { allTags, filterQuestions } from './browseSelectors'
-import { barClass, browseCardBadge, percentage, studyCardLabel, tagLabel } from './presentation'
+import {
+  barClass,
+  browseCardBadge,
+  formatScheduleDate,
+  nextSessionDueText,
+  percentage,
+  studyCardLabel,
+  tagLabel
+} from './presentation'
 import {
   correctCount,
   domainBreakdown,
@@ -70,6 +78,22 @@ describe('presentation selectors', () => {
     })
     expect(studyCardLabel({ due: '2026-06-06', reps: 1 })).toBe('reps=1  due=2026-06-06')
     expect(studyCardLabel({ due: '2026-06-06', reps: 3 })).toBe('reps=3')
+  })
+
+  test('formatScheduleDate formats YYYY-MM-DD and passes through non-date strings', () => {
+    expect(formatScheduleDate('2026-06-12')).toBe('Jun 12, 2026')
+    expect(formatScheduleDate('not-a-date')).toBe('not-a-date')
+  })
+
+  test('summarizes the next session due state', () => {
+    expect(nextSessionDueText(null, true)).toBe('Checking')
+    expect(nextSessionDueText(null, false, null, false)).toBe('No bank')
+    expect(nextSessionDueText(null, false, 'network')).toBe('Unavailable')
+    expect(nextSessionDueText({ dueToday: 1, nextDue: '2026-06-05', newAvailable: 0 })).toBe('Due today (1)')
+    expect(nextSessionDueText({ dueToday: 3, nextDue: '2026-06-05', newAvailable: 0 })).toBe('Due today (3)')
+    expect(nextSessionDueText({ dueToday: 0, nextDue: '2026-06-12', newAvailable: 0 })).toBe('Due Jun 12, 2026')
+    expect(nextSessionDueText({ dueToday: 0, nextDue: null, newAvailable: 4 })).toBe('New cards ready')
+    expect(nextSessionDueText({ dueToday: 0, nextDue: null, newAvailable: 0 })).toBe('All caught up')
   })
 })
 
