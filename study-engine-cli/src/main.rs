@@ -39,7 +39,7 @@ struct Cli {
     new: usize,
 
     /// Directory containing <cert>.json question files
-    #[arg(long)]
+    #[arg(long, global = true)]
     questions_dir: Option<PathBuf>,
 }
 

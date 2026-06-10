@@ -72,7 +72,18 @@ process.on("SIGINT", cleanup);
 process.on("SIGTERM", cleanup);
 
 console.log("Starting backend on :3001...");
-start("backend", backendBin, ["serve", "--port", "3001"]);
+// Anchor the questions dir to the repo, not the caller's cwd. Without this,
+// launching boot.mjs from anywhere but the repo root makes the backend fall
+// back to ~/.config/study-engine/questions, which usually doesn't exist
+// (os error 3 / ERROR_PATH_NOT_FOUND on Windows).
+const questionsDir = join(SCRIPT_DIR, "questions");
+start("backend", backendBin, [
+  "serve",
+  "--port",
+  "3001",
+  "--questions-dir",
+  questionsDir,
+]);
 
 console.log("Starting UI on :5173...");
 start("UI", npm, ["run", "dev"], { cwd: uiDir });
