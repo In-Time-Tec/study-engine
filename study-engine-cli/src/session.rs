@@ -198,7 +198,7 @@ fn run_cards(questions: &[&Question], bank: &Bank, db: &Db, cert: &str) -> Resul
             correct,
         );
 
-        db.record_review(&updated_card, &q.id, cert, correct, rating)?;
+        db.record_review(&updated_card, &q.id, cert, correct, rating, None)?;
 
         total += 1;
         if correct {
