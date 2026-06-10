@@ -48,16 +48,20 @@
           out further each time.
         </p>
 
+	<hr>
+
         <dl class="help-defs">
           <dt>Due Today</dt>
           <dd>Cards whose review date has arrived. These are your priority.</dd>
           <dt>New Available</dt>
           <dd>Cards you haven't studied yet.</dd>
           <dt>Mastered</dt>
-          <dd>Cards you've answered correctly enough times that they won't return for a while.</dd>
+          <dd>Cards with 3 or more consecutive correct reviews. A missed card resets its count to 0.</dd>
           <dt>Total Cards</dt>
           <dd>Every question in this bank.</dd>
         </dl>
+
+	<hr>
 
         <p>
           The <strong>Study</strong> tab runs everything due plus a few new

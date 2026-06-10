@@ -11,7 +11,11 @@
   import type { ThemeState, PresetName } from './theme'
   import type { BankInfo } from './types'
 
-  let { oncertsChanged }: { oncertsChanged?: (data: { certs: string[]; select?: string }) => void } = $props()
+  let { oncertsChanged, cert = '', certs = [] }: {
+    oncertsChanged?: (data: { certs: string[]; select?: string }) => void
+    cert?: string
+    certs?: string[]
+  } = $props()
 
   // ─── Banks ──────────────────────────────────────────────────────────────
   let banks: BankInfo[] = $state([])
@@ -118,6 +122,19 @@
 <div class="settings">
   <div class="panel">
     <div class="panel-title">Question Banks</div>
+    {#if certs.length > 1}
+      <div style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:12px;">
+        <label for="cert-select">Active bank</label>
+        <select
+          id="cert-select"
+          class="filter-select"
+          value={cert}
+          onchange={(e) => oncertsChanged?.({ certs, select: (e.target as HTMLSelectElement).value })}
+        >
+          {#each certs as c}<option value={c}>{c}</option>{/each}
+        </select>
+      </div>
+    {/if}
     {#if banksError}
       <div class="empty">Error: {banksError}</div>
     {:else if banks.length === 0}

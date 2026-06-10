@@ -2,7 +2,7 @@
   import { onMount, untrack } from 'svelte'
   import { fade, fly } from 'svelte/transition'
   import { cubicOut } from 'svelte/easing'
-  import { fetchDue, fetchStats, postReview, postSession } from './api'
+  import { clearPendingSession, fetchDue, fetchStats, loadPendingSession, postReview, postSession, savePendingSession } from './api'
   import { barClass, studyCardLabel } from './presentation'
   import {
     correctCount as countCorrect,
@@ -40,6 +40,7 @@
   let error: string | null = $state(null)
   let saveError: string | null = $state(null)
   let saving: boolean = $state(false)
+  let confirmingEnd: boolean = $state(false)
 
   let dueCount: number = $state(0)
   let newCount: number = $state(0)
@@ -56,7 +57,13 @@
   let controlDomain: number | null = $state(untrack(() => domain))
   let domains: DomainStat[] = $state([])
 
+  function getCardId(c: AnyCard): string {
+    return isWrappedCard(c) ? c.question.id : (c as Question).id
+  }
+
   async function loadSession(): Promise<void> {
+    clearPendingSession(cert).catch(() => {})
+    confirmingEnd = false
     phase = 'loading'
     current = 0
     selected = null
@@ -75,13 +82,21 @@
       dueCount = data.dueCount
       newCount = data.newCount
       phase = cards.length ? 'question' : 'empty'
+      if (interactive && cards.length > 0) {
+        savePendingSession({
+          cert,
+          cardIds: cards.map(getCardId),
+          controlMode,
+          controlDomain
+        }).catch(() => {})
+      }
     } catch (e) {
       error = (e as Error).message
       phase = 'error'
     }
   }
 
-  onMount(() => {
+  onMount(async () => {
     // Populate the domain selector. Failure (or no stats) just leaves the
     // selector at "All domains" — it must never block the study session itself.
     if (interactive) {
@@ -89,6 +104,43 @@
         .then(s => { domains = s?.domains ?? [] })
         .catch(() => { domains = [] })
     }
+
+    if (interactive) {
+      try {
+        const pending = await loadPendingSession(cert)
+        if (pending && pending.cardIds.length > 0) {
+          const data = await fetchDue({ cert, ids: pending.cardIds })
+          const cardMap = new Map(data.cards.map(c => [getCardId(c), c]))
+          const orderedCards = pending.cardIds
+            .map(id => cardMap.get(id))
+            .filter((c): c is AnyCard => c !== undefined)
+          const resumeIndex = pending.reviewedCards.length
+          if (resumeIndex < orderedCards.length) {
+            cards = orderedCards
+            current = resumeIndex
+            selected = null
+            sessionResults = pending.reviewedCards.map(rc => ({
+              cardId: rc.cardId,
+              isCorrect: rc.isCorrect,
+              rating: rc.rating,
+              selected: rc.selectedLetter,
+              domain: rc.domain,
+              correctAnswer: rc.correctAnswer,
+              questionText: rc.questionText
+            }))
+            phase = 'question'
+            controlMode = pending.controlMode as Exclude<StudyMode, 'custom'>
+            controlDomain = pending.controlDomain
+            dueCount = data.dueCount
+            newCount = data.newCount
+            return
+          }
+        }
+      } catch (_) {
+        // fall through to fresh session
+      }
+    }
+
     return loadSession()
   })
 
@@ -108,6 +160,7 @@
     /* istanbul ignore next */
     if (phase !== 'revealed' || saving) return
 
+    confirmingEnd = false
     const next = applyRating({ cards, current, selected, sessionResults }, rating)
     saving = true
     saveError = null
@@ -117,7 +170,8 @@
         cardId: next.result.cardId,
         cert,
         rating,
-        isCorrect: next.result.isCorrect
+        isCorrect: next.result.isCorrect,
+        selected
       })
 
       sessionResults = next.sessionResults
@@ -142,6 +196,12 @@
     if (total > 0) {
       await postSession({ cert, total, correct })
     }
+    clearPendingSession(cert).catch(() => {})
+  }
+
+  function endSession(): void {
+    clearPendingSession(cert).catch(() => {})
+    ondone?.()
   }
 
   function handleKey(e: KeyboardEvent): void {
@@ -196,7 +256,7 @@
   <div class="summary-box">
     <div class="summary-score">✓</div>
     <div class="summary-label">Nothing due today.</div>
-    <button class="btn" onclick={() => ondone?.()}>Back to Dashboard</button>
+    <button class="btn" onclick={() => { clearPendingSession(cert).catch(() => {}); ondone?.() }}>Back to Dashboard</button>
   </div>
 
 {:else if phase === 'question' || phase === 'revealed'}
@@ -284,6 +344,16 @@
     </div>
   {/key}
 
+  <div class="end-session-row">
+    {#if confirmingEnd}
+      <span class="end-session-prompt">End session and lose progress?</span>
+      <button class="btn btn-danger" onclick={endSession}>Yes, end it</button>
+      <button class="btn" onclick={() => (confirmingEnd = false)}>Cancel</button>
+    {:else}
+      <button class="btn btn-end" onclick={() => (confirmingEnd = true)}>End Session</button>
+    {/if}
+  </div>
+
 {:else if phase === 'summary'}
   <div class="summary-box">
     <div class="summary-score">{accuracy}%</div>
@@ -326,7 +396,7 @@
   {/if}
 
   <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:16px;">
-    <button class="btn btn-primary" onclick={() => ondone?.()}>Back to Dashboard</button>
+    <button class="btn btn-primary" onclick={() => { clearPendingSession(cert).catch(() => {}); ondone?.() }}>Back to Dashboard</button>
     {#if controlMode === 'due' && interactive}
       <button class="btn" onclick={loadSession}>Study Again</button>
     {/if}
