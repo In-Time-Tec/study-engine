@@ -17,6 +17,21 @@ const backendBin = join(SCRIPT_DIR, "study-engine-cli", "target", "debug", binNa
 const uiDir = join(SCRIPT_DIR, "study-engine-ui");
 const manifest = join(SCRIPT_DIR, "study-engine-cli", "Cargo.toml");
 
+// Fail early with a helpful message if the Rust toolchain is missing, rather
+// than a cryptic spawn error. `cargo --version` exits 0 only when installed.
+const probe = spawnSync("cargo", ["--version"], { stdio: "ignore", shell: isWin });
+if (probe.status !== 0) {
+  console.error(
+    "\ncargo was not found. The Rust toolchain is required to build the backend.\n" +
+      "Install it via rustup: https://rustup.rs\n" +
+      (isWin
+        ? "  Windows: download and run rustup-init.exe, then open a new terminal.\n"
+        : "  macOS/Linux: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh\n" +
+          '  Then restart your shell (or run: source "$HOME/.cargo/env").\n'),
+  );
+  process.exit(127);
+}
+
 // Build the backend first so compile errors surface before anything starts.
 console.log("Building study-engine-cli...");
 const build = spawnSync("cargo", ["build", "--manifest-path", manifest], {

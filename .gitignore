@@ -16,9 +16,10 @@ study-engine-ui/.last-run.json
 # Temp bank written by the settings e2e upload test (cleaned up in-test)
 study-engine-ui/e2e/fixtures/uploaded-*.json
 
-# Stray root-level package files (deps live in study-engine-ui/)
-package.json
-package-lock.json
+# Stray root-level package files (deps live in study-engine-ui/).
+# Leading slash anchors to repo root so study-engine-ui/package.json is NOT ignored.
+/package.json
+/package-lock.json
 node_modules/
 
 # OS
