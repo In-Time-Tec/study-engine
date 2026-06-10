@@ -8,8 +8,11 @@ on:
 
 jobs:
   backend:
-    name: Backend (cargo test)
-    runs-on: ubuntu-latest
+    name: Backend (cargo test, ${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -20,6 +23,9 @@ jobs:
         working-directory: study-engine-cli
         run: cargo test
       - name: Generated TS bindings are up to date
+        # Line endings differ on the Windows runner (autocrlf), which would
+        # make this diff false-positive there; one OS suffices for drift.
+        if: matrix.os == 'ubuntu-latest'
         # `cargo test` regenerates the wire-contract bindings; fail if the
         # committed output drifts from the Rust structs that produce it.
         run: git diff --exit-code study-engine-ui/src/lib/generated
