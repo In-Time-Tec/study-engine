@@ -29,6 +29,7 @@ export default defineConfig({
       include: [
         'src/lib/api.ts',
         'src/lib/browseSelectors.ts',
+        'src/lib/certSelection.ts',
         'src/lib/dashboardHelp.ts',
         'src/lib/presentation.ts',
         'src/lib/sessionSelectors.ts',
