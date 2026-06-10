@@ -69,7 +69,7 @@ The CLI auto-assigns `1` for wrong answers without prompting. The web UI gates "
 | `questions.rs` | `Bank` and `Question` types; `Bank::parse` validates raw JSON (shared by load and upload) |
 | `db.rs` | `Db` wrapper over rusqlite; `CardState` with FSRS fields |
 | `session.rs` | CLI study loop + `fsrs_next()` (shared with serve) |
-| `serve.rs` | Axum HTTP handlers; bank CRUD (`GET/POST /api/banks`, `DELETE /api/banks/{cert}`); generates TypeScript wire types via `ts-rs` |
+| `serve.rs` | Axum HTTP handlers; bank CRUD (`GET/POST /api/banks`, `DELETE /api/banks/{cert}`); session resume (`GET/POST/DELETE /api/pending-session`); generates TypeScript wire types via `ts-rs` |
 | `progress.rs` | Domain/tag/session aggregation shared between CLI stats and the API |
 | `stats.rs` | CLI progress dashboard with ANSI bar charts |
 
@@ -83,7 +83,7 @@ Backend response structs derive `ts_rs::TS`. The `serve::ts_bindings::export_typ
 | File | Role |
 |---|---|
 | `App.svelte` | Tab shell; owns cert selection and `applyCerts` for stable selection across refreshes |
-| `StudySession.svelte` | Study state machine (`loading → question → revealed → summary`); owns in-session mode toggle and domain filter |
+| `StudySession.svelte` | Study state machine (`loading → question → revealed → summary`); owns in-session mode toggle, domain filter, and session resume via the DB (`/api/pending-session`) |
 | `Dashboard.svelte` | Stats overview; clickable domain bars deep-link into due sessions; collapsible help panel |
 | `Settings.svelte` | Bank upload (with 409-conflict confirmation), bank delete, cert switch |
 | `api.ts` | Fetch wrapper; Zod-validates every response; handles 409-as-conflict for upload |
