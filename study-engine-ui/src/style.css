@@ -44,7 +44,8 @@ p  { color: var(--fg); }
   padding: 10px 20px;
   display: flex;
   align-items: center;
-  gap: 32px;
+  flex-wrap: wrap;
+  gap: 8px 32px;
 }
 
 .header-brand {
@@ -59,6 +60,7 @@ p  { color: var(--fg); }
   display: flex;
   gap: 4px;
   flex: 1;
+  min-width: 260px;
 }
 
 .nav-btn {
@@ -75,6 +77,40 @@ p  { color: var(--fg); }
 }
 .nav-btn:hover { color: var(--fg); background: var(--panel2); }
 .nav-btn.active { color: var(--bright); background: var(--muted); }
+
+.session-due {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.session-due-label {
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.session-due-value {
+  color: var(--bright);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 680px) {
+  .nav {
+    order: 3;
+    flex-basis: 100%;
+    min-width: 0;
+    overflow-x: auto;
+  }
+
+  .session-due {
+    margin-left: auto;
+  }
+}
 
 /* ── Content area ─────────────────────────────────── */
 .content {
@@ -346,6 +382,32 @@ p  { color: var(--fg); }
   margin-top: 14px;
   align-items: center;
 }
+
+.end-session-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.end-session-prompt {
+  font-size: 11px;
+  color: var(--dim);
+  flex: 1;
+}
+
+.btn-end {
+  font-size: 11px;
+  color: var(--dim);
+  border-color: var(--muted);
+  padding: 5px 12px;
+}
+.btn-end:hover { color: var(--mid); border-color: var(--dim); }
+
+.btn-danger { border-color: var(--low); color: var(--mid); }
+.btn-danger:hover { background: var(--low); color: var(--fg); border-color: var(--dim); }
 
 .rating-label {
   font-size: 11px;
