@@ -16,12 +16,13 @@ CREATE TABLE IF NOT EXISTS cards (
     PRIMARY KEY (cert, id)
 );
 CREATE TABLE IF NOT EXISTS reviews (
-    id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    card_id TEXT NOT NULL,
-    cert    TEXT NOT NULL,
-    ts      TEXT NOT NULL,
-    correct INTEGER NOT NULL,
-    rating  INTEGER NOT NULL
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_id         TEXT NOT NULL,
+    cert            TEXT NOT NULL,
+    ts              TEXT NOT NULL,
+    correct         INTEGER NOT NULL,
+    rating          INTEGER NOT NULL,
+    selected_letter TEXT
 );
 CREATE TABLE IF NOT EXISTS sessions (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,6 +30,13 @@ CREATE TABLE IF NOT EXISTS sessions (
     date    TEXT NOT NULL,
     total   INTEGER NOT NULL,
     correct INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS pending_sessions (
+    cert            TEXT PRIMARY KEY,
+    card_ids        TEXT NOT NULL,
+    control_mode    TEXT NOT NULL DEFAULT 'due',
+    control_domain  INTEGER,
+    started_at      TEXT NOT NULL
 );
 ";
 
@@ -156,6 +164,7 @@ impl Db {
         cert: &str,
         correct: bool,
         rating: u32,
+        selected_letter: Option<&str>,
     ) -> Result<()> {
         tracing::debug!(%card_id, %cert, rating, correct = correct as u8, reps = card.reps, due = ?card.due, "record_review");
         let tx = self.0.unchecked_transaction()?;
@@ -175,11 +184,104 @@ impl Db {
             ],
         )?;
         tx.execute(
-            "INSERT INTO reviews (card_id, cert, ts, correct, rating)
-             VALUES (?1,?2,?3,?4,?5)",
-            params![card_id, cert, ts, correct as i32, rating],
+            "INSERT INTO reviews (card_id, cert, ts, correct, rating, selected_letter)
+             VALUES (?1,?2,?3,?4,?5,?6)",
+            params![card_id, cert, ts, correct as i32, rating, selected_letter],
         )?;
         tx.commit()?;
+        Ok(())
+    }
+
+    pub fn save_pending_session(
+        &self,
+        cert: &str,
+        card_ids_json: &str,
+        control_mode: &str,
+        control_domain: Option<i32>,
+    ) -> Result<()> {
+        let started_at = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        self.0.execute(
+            "INSERT OR REPLACE INTO pending_sessions
+             (cert, card_ids, control_mode, control_domain, started_at)
+             VALUES (?1,?2,?3,?4,?5)",
+            params![cert, card_ids_json, control_mode, control_domain, started_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_pending_session(
+        &self,
+        cert: &str,
+    ) -> Result<Option<(String, String, Option<i32>, String)>> {
+        let res = self.0.query_row(
+            "SELECT card_ids, control_mode, control_domain, started_at
+             FROM pending_sessions WHERE cert = ?1",
+            params![cert],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<i32>>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            },
+        );
+        match res {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Reviews for the given card IDs recorded at or after `since` (ISO timestamp).
+    pub fn reviews_since(
+        &self,
+        cert: &str,
+        card_ids: &[&str],
+        since: &str,
+    ) -> Result<Vec<(String, bool, u32, Option<String>)>> {
+        if card_ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let placeholders = card_ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 3))
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT card_id, correct, rating, selected_letter
+             FROM reviews
+             WHERE cert = ?1 AND ts >= ?2 AND card_id IN ({})
+             ORDER BY ts",
+            placeholders
+        );
+        let mut stmt = self.0.prepare(&sql)?;
+        let mut raw_params: Vec<Box<dyn rusqlite::ToSql>> = vec![
+            Box::new(cert.to_string()),
+            Box::new(since.to_string()),
+        ];
+        for id in card_ids {
+            raw_params.push(Box::new(id.to_string()));
+        }
+        let param_refs: Vec<&dyn rusqlite::ToSql> =
+            raw_params.iter().map(|b| b.as_ref()).collect();
+        let rows = stmt.query_map(param_refs.as_slice(), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i32>(1)? != 0,
+                row.get::<_, u32>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn clear_pending_session(&self, cert: &str) -> Result<()> {
+        self.0.execute(
+            "DELETE FROM pending_sessions WHERE cert = ?1",
+            params![cert],
+        )?;
         Ok(())
     }
 
@@ -245,6 +347,7 @@ fn migrate_schema(conn: &Connection) -> Result<()> {
         return Ok(());
     }
 
+    // Migration 1: fix cards primary key (cert, id) from legacy (id only)
     let mut stmt = conn.prepare("PRAGMA table_info(cards)")?;
     let rows = stmt.query_map([], |row| {
         Ok((row.get::<_, String>(1)?, row.get::<_, u32>(5)?))
@@ -280,6 +383,24 @@ fn migrate_schema(conn: &Connection) -> Result<()> {
             DROP TABLE cards_legacy;
             ",
         )?;
+    }
+
+    // Migration 2: add selected_letter to reviews if missing
+    let has_reviews: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='reviews')",
+        [],
+        |row| row.get(0),
+    )?;
+    if has_reviews {
+        let has_selected_letter: bool = conn
+            .prepare("PRAGMA table_info(reviews)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+            .iter()
+            .any(|name| name == "selected_letter");
+        if !has_selected_letter {
+            conn.execute_batch("ALTER TABLE reviews ADD COLUMN selected_letter TEXT")?;
+        }
     }
 
     Ok(())
@@ -428,7 +549,7 @@ mod tests {
     fn record_review_and_get_card_round_trip() {
         let db = new_db();
         let card = sample_card("q1", "cert-a");
-        db.record_review(&card, "q1", "cert-a", true, 4).unwrap();
+        db.record_review(&card, "q1", "cert-a", true, 4, None).unwrap();
 
         let retrieved = db.get_card("cert-a", "q1").unwrap();
         assert_eq!(retrieved.id, "q1");
@@ -443,9 +564,8 @@ mod tests {
     fn record_review_stores_review_history() {
         let db = new_db();
         let card = sample_card("q-rev", "cert-a");
-        db.record_review(&card, "q-rev", "cert-a", true, 4).unwrap();
-        db.record_review(&card, "q-rev", "cert-a", false, 1)
-            .unwrap();
+        db.record_review(&card, "q-rev", "cert-a", true, 4, None).unwrap();
+        db.record_review(&card, "q-rev", "cert-a", false, 1, None).unwrap();
 
         let reviews = db.reviews_for("cert-a", "q-rev").unwrap();
         assert_eq!(reviews.len(), 2);
@@ -486,8 +606,8 @@ mod tests {
         let db = new_db();
         let a = sample_card("c1", "certA");
         let b = sample_card("c2", "certB");
-        db.record_review(&a, "c1", "certA", true, 4).unwrap();
-        db.record_review(&b, "c2", "certB", true, 4).unwrap();
+        db.record_review(&a, "c1", "certA", true, 4, None).unwrap();
+        db.record_review(&b, "c2", "certB", true, 4, None).unwrap();
 
         let cards_a = db.all_cards("certA").unwrap();
         assert_eq!(cards_a.len(), 1);
@@ -503,8 +623,8 @@ mod tests {
         let db = new_db();
         let card_a = sample_card("r1", "certA");
         let card_b = sample_card("r2", "certB");
-        db.record_review(&card_a, "r1", "certA", true, 4).unwrap();
-        db.record_review(&card_b, "r2", "certB", false, 1).unwrap();
+        db.record_review(&card_a, "r1", "certA", true, 4, None).unwrap();
+        db.record_review(&card_b, "r2", "certB", false, 1, None).unwrap();
 
         let revs_a = db.all_reviews("certA").unwrap();
         assert_eq!(revs_a.len(), 1);
@@ -521,7 +641,7 @@ mod tests {
     fn record_review_updates_existing_card() {
         let db = new_db();
         let v1 = sample_card("upd", "c");
-        db.record_review(&v1, "upd", "c", true, 4).unwrap();
+        db.record_review(&v1, "upd", "c", true, 4, None).unwrap();
 
         let v2 = CardState {
             id: "upd".to_string(),
@@ -532,7 +652,7 @@ mod tests {
             last_review: Some("2026-06-05T10:00:00".to_string()),
             reps: 2,
         };
-        db.record_review(&v2, "upd", "c", true, 4).unwrap();
+        db.record_review(&v2, "upd", "c", true, 4, None).unwrap();
 
         let retrieved = db.get_card("c", "upd").unwrap();
         assert_eq!(retrieved.reps, 2);
@@ -549,10 +669,8 @@ mod tests {
         cert_b.reps = 4;
         cert_b.due = Some("2026-08-01".to_string());
 
-        db.record_review(&cert_a, "shared", "cert-a", true, 4)
-            .unwrap();
-        db.record_review(&cert_b, "shared", "cert-b", true, 4)
-            .unwrap();
+        db.record_review(&cert_a, "shared", "cert-a", true, 4, None).unwrap();
+        db.record_review(&cert_b, "shared", "cert-b", true, 4, None).unwrap();
 
         let card_a = db.get_card("cert-a", "shared").unwrap();
         let card_b = db.get_card("cert-b", "shared").unwrap();
@@ -569,10 +687,8 @@ mod tests {
         let cert_a = sample_card("shared-review", "cert-a");
         let cert_b = sample_card("shared-review", "cert-b");
 
-        db.record_review(&cert_a, "shared-review", "cert-a", true, 4)
-            .unwrap();
-        db.record_review(&cert_b, "shared-review", "cert-b", false, 1)
-            .unwrap();
+        db.record_review(&cert_a, "shared-review", "cert-a", true, 4, None).unwrap();
+        db.record_review(&cert_b, "shared-review", "cert-b", false, 1, None).unwrap();
 
         assert_eq!(
             db.reviews_for("cert-a", "shared-review").unwrap(),
@@ -612,8 +728,7 @@ mod tests {
 
         let db = Db::open_at(&path).unwrap();
         let cert_b = sample_card("shared", "cert-b");
-        db.record_review(&cert_b, "shared", "cert-b", true, 4)
-            .unwrap();
+        db.record_review(&cert_b, "shared", "cert-b", true, 4, None).unwrap();
 
         assert_eq!(db.get_card("cert-a", "shared").unwrap().reps, 1);
         assert_eq!(db.get_card("cert-b", "shared").unwrap().cert, "cert-b");

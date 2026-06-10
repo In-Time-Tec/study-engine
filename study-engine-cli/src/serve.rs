@@ -119,6 +119,16 @@ struct ReviewBody {
     cert: Option<String>,
     rating: u32,
     is_correct: bool,
+    selected: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PendingSessionBody {
+    cert: Option<String>,
+    card_ids: Vec<String>,
+    control_mode: String,
+    control_domain: Option<i32>,
 }
 
 #[derive(Deserialize)]
@@ -150,6 +160,7 @@ struct StatsResponse {
     total: u32,
     introduced: u32,
     due_today: u32,
+    next_due: Option<String>,
     new_available: u32,
     mastered: u32,
     domains: Vec<DomainStat>,
@@ -231,6 +242,27 @@ struct BankInfo {
 #[derive(Serialize, TS)]
 struct BanksResponse {
     banks: Vec<BankInfo>,
+}
+
+#[derive(Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+struct ReviewedCard {
+    card_id: String,
+    is_correct: bool,
+    rating: u32,
+    selected_letter: Option<String>,
+    domain: u32,
+    correct_answer: String,
+    question_text: String,
+}
+
+#[derive(Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+struct PendingSessionResponse {
+    card_ids: Vec<String>,
+    control_mode: String,
+    control_domain: Option<i32>,
+    reviewed_cards: Vec<ReviewedCard>,
 }
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -344,6 +376,7 @@ async fn get_stats(
             total: summary.total,
             introduced: summary.introduced,
             due_today: summary.due_today,
+            next_due: summary.next_due,
             new_available: summary.new_available,
             mastered: summary.mastered,
             domains: summary
@@ -547,6 +580,7 @@ async fn post_review(
             &cert,
             body.is_correct,
             body.rating,
+            body.selected.as_deref(),
         )?;
         Ok(())
     })
@@ -680,6 +714,106 @@ async fn delete_bank(
     Ok(Json(CertsResponse { certs: certs? }))
 }
 
+async fn post_pending_session(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<PendingSessionBody>,
+) -> ApiResult<serde_json::Value> {
+    let cert = state.cert_or_default(body.cert);
+    let db_path = state.db_path.clone();
+    let card_ids_json = serde_json::to_string(&body.card_ids)
+        .context("serialize card_ids")?;
+
+    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+        Db::open_or_at(db_path.as_deref())?.save_pending_session(
+            &cert,
+            &card_ids_json,
+            &body.control_mode,
+            body.control_domain,
+        )
+    })
+    .await
+    .context("spawn_blocking panicked")??;
+
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+async fn get_pending_session(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<CertParam>,
+) -> Result<Json<PendingSessionResponse>, ApiError> {
+    let cert = state.cert_or_default(params.cert);
+    let dir = state.questions_dir.clone();
+    let db_path = state.db_path.clone();
+
+    let result = tokio::task::spawn_blocking(move || -> Result<Option<PendingSessionResponse>, ApiError> {
+        let db = Db::open_or_at(db_path.as_deref())?;
+        let Some((card_ids_json, control_mode, control_domain, started_at)) =
+            db.get_pending_session(&cert)?
+        else {
+            return Ok(None);
+        };
+
+        let card_ids: Vec<String> = serde_json::from_str(&card_ids_json)
+            .context("deserialize card_ids")?;
+
+        let bank = Bank::load(&dir, &cert)?;
+        let question_map: std::collections::HashMap<&str, &Question> =
+            bank.questions.iter().map(|q| (q.id.as_str(), q)).collect();
+
+        let id_refs: Vec<&str> = card_ids.iter().map(|s| s.as_str()).collect();
+        let raw_reviews = db.reviews_since(&cert, &id_refs, &started_at)?;
+
+        let reviewed_cards: Vec<ReviewedCard> = raw_reviews
+            .into_iter()
+            .filter_map(|(card_id, is_correct, rating, selected_letter)| {
+                let q = question_map.get(card_id.as_str())?;
+                Some(ReviewedCard {
+                    card_id,
+                    is_correct,
+                    rating,
+                    selected_letter,
+                    domain: q.domain,
+                    correct_answer: q.answer.clone(),
+                    question_text: q.question.clone(),
+                })
+            })
+            .collect();
+
+        Ok(Some(PendingSessionResponse {
+            card_ids,
+            control_mode,
+            control_domain,
+            reviewed_cards,
+        }))
+    })
+    .await
+    .context("spawn_blocking panicked")??;
+
+    match result {
+        Some(r) => Ok(Json(r)),
+        None => Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: anyhow::anyhow!("no pending session for this cert"),
+        }),
+    }
+}
+
+async fn delete_pending_session(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<CertParam>,
+) -> ApiResult<serde_json::Value> {
+    let cert = state.cert_or_default(params.cert);
+    let db_path = state.db_path.clone();
+
+    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+        Db::open_or_at(db_path.as_deref())?.clear_pending_session(&cert)
+    })
+    .await
+    .context("spawn_blocking panicked")??;
+
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
 // ─── Server entry point ───────────────────────────────────────────────────────
 
 #[cfg(not(tarpaulin_include))]
@@ -700,6 +834,7 @@ pub async fn run(questions_dir: PathBuf, cert: String, port: u16) -> anyhow::Res
         .route("/api/review", post(post_review))
         .route("/api/session", post(post_session))
         .route("/api/sessions", get(get_sessions))
+        .route("/api/pending-session", get(get_pending_session).post(post_pending_session).delete(delete_pending_session))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -753,6 +888,8 @@ mod ts_bindings {
             CertsResponse,
             BankInfo,
             BanksResponse,
+            ReviewedCard,
+            PendingSessionResponse,
         );
     }
 }
@@ -860,6 +997,7 @@ mod handler_tests {
             .route("/api/review", post(post_review))
             .route("/api/session", post(post_session))
             .route("/api/sessions", get(get_sessions))
+            .route("/api/pending-session", get(get_pending_session).post(post_pending_session).delete(delete_pending_session))
             .with_state(state);
 
         TestApp {
@@ -1157,10 +1295,9 @@ mod handler_tests {
             last_review: Some("2026-06-04T12:00:00".to_string()),
             reps: 1,
         };
-        db.record_review(&due_card, "q1", "test", true, 4).unwrap();
-        db.record_review(&due_card, "q1", "test", true, 4).unwrap();
-        db.record_review(&future_card, "q2", "test", false, 1)
-            .unwrap();
+        db.record_review(&due_card, "q1", "test", true, 4, None).unwrap();
+        db.record_review(&due_card, "q1", "test", true, 4, None).unwrap();
+        db.record_review(&future_card, "q2", "test", false, 1, None).unwrap();
         db.insert_session("test", 3, 2).unwrap();
 
         let resp = app
@@ -1175,8 +1312,10 @@ mod handler_tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
         let json = body_json(resp).await;
+        let today = Local::now().format("%Y-%m-%d").to_string();
         assert_eq!(json["introduced"], 2);
         assert_eq!(json["dueToday"], 1);
+        assert_eq!(json["nextDue"], today);
         assert_eq!(json["mastered"], 1);
         assert_eq!(json["sessions"].as_array().unwrap().len(), 1);
         assert!(!json["tags"].as_array().unwrap().is_empty());
@@ -1200,9 +1339,8 @@ mod handler_tests {
             reps: 1,
             ..Default::default()
         };
-        db.record_review(&due_card, "q1", "test", false, 1).unwrap();
-        db.record_review(&future_card, "q2", "test", true, 4)
-            .unwrap();
+        db.record_review(&due_card, "q1", "test", false, 1, None).unwrap();
+        db.record_review(&future_card, "q2", "test", true, 4, None).unwrap();
 
         let resp = app
             .router
