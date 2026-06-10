@@ -1,6 +1,7 @@
 #![deny(warnings)]
 mod ansi;
 mod db;
+mod paths;
 mod progress;
 mod questions;
 mod serve;
@@ -71,8 +72,7 @@ fn resolve_questions_dir(flag: Option<PathBuf>) -> PathBuf {
         return dev;
     }
     // Default XDG-style location
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".config/study-engine/questions")
+    paths::home_dir().join(".config/study-engine/questions")
 }
 
 #[cfg(not(tarpaulin_include))]

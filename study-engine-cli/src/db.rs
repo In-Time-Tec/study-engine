@@ -1,7 +1,7 @@
 use anyhow::Result;
 use chrono::{Local, NaiveDate};
 use rusqlite::{Connection, params};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use ts_rs::TS;
 
 const SCHEMA: &str = "
@@ -97,8 +97,7 @@ impl CardState {
 
 impl Db {
     pub fn open() -> Result<Self> {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let path = PathBuf::from(home).join(".local/share/study-engine/study-engine.db");
+        let path = crate::paths::home_dir().join(".local/share/study-engine/study-engine.db");
         Self::open_at(&path)
     }
 
