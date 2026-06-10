@@ -312,8 +312,15 @@ fn sanitize_cert_name(name: &str) -> Result<String, ApiError> {
 
 /// List the `.json` bank stems in `dir`, sorted. Shared by `get_certs` and the
 /// upload/delete handlers so a refreshed cert list always uses the same logic.
+/// A missing dir means no banks yet (questions/ is gitignored, so fresh clones
+/// don't have it) — that's an empty list, not an error.
 fn list_cert_names(dir: &std::path::Path) -> anyhow::Result<Vec<String>> {
-    let mut names: Vec<String> = std::fs::read_dir(dir)?
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e.into()),
+    };
+    let mut names: Vec<String> = entries
         .filter_map(|e| e.ok())
         .filter_map(|e| {
             let p = e.path();
@@ -680,6 +687,7 @@ async fn post_upload_bank(
                 "A bank named '{name}' already exists. Replacing it may orphan saved progress if its question IDs changed."
             )));
         }
+        std::fs::create_dir_all(&dir)?;
         std::fs::write(&path, &body.content)?;
         Ok(list_cert_names(&dir)?)
     })
@@ -818,6 +826,9 @@ async fn delete_pending_session(
 
 #[cfg(not(tarpaulin_include))]
 pub async fn run(questions_dir: PathBuf, cert: String, port: u16) -> anyhow::Result<()> {
+    // questions/ is gitignored, so fresh clones start without it; create it up
+    // front so the first upload has somewhere to land.
+    std::fs::create_dir_all(&questions_dir)?;
     let state = Arc::new(AppState {
         questions_dir,
         default_cert: cert,
@@ -975,10 +986,22 @@ mod handler_tests {
     }
 
     fn build_test_app() -> TestApp {
+        build_test_app_inner(true)
+    }
+
+    /// Like `build_test_app`, but the questions dir does not exist on disk —
+    /// the state a fresh clone is in before any bank is uploaded.
+    fn build_test_app_missing_questions_dir() -> TestApp {
+        build_test_app_inner(false)
+    }
+
+    fn build_test_app_inner(create_questions_dir: bool) -> TestApp {
         let dir = TempDir::new().unwrap();
         let questions_dir = dir.path().join("questions");
-        fs::create_dir_all(&questions_dir).unwrap();
-        fs::write(questions_dir.join("test.json"), TEST_BANK_JSON).unwrap();
+        if create_questions_dir {
+            fs::create_dir_all(&questions_dir).unwrap();
+            fs::write(questions_dir.join("test.json"), TEST_BANK_JSON).unwrap();
+        }
 
         let db_path = dir.path().join("test.db");
         let state = Arc::new(AppState {
@@ -1462,6 +1485,56 @@ mod handler_tests {
             .header("content-type", "application/json")
             .body(Body::from(body.to_string()))
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn get_certs_returns_empty_when_questions_dir_missing() {
+        let app = build_test_app_missing_questions_dir();
+        let resp = app
+            .router
+            .oneshot(Request::get("/api/certs").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp).await;
+        assert_eq!(json["certs"].as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn get_banks_returns_empty_when_questions_dir_missing() {
+        let app = build_test_app_missing_questions_dir();
+        let resp = app
+            .router
+            .oneshot(Request::get("/api/banks").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp).await;
+        assert_eq!(json["banks"].as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn post_upload_bank_creates_missing_questions_dir() {
+        let app = build_test_app_missing_questions_dir();
+        let body = serde_json::json!({
+            "name": "newbank",
+            "content": TEST_BANK_JSON,
+            "overwrite": false
+        });
+        let resp = app
+            .router
+            .oneshot(post_json("/api/banks", body))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp).await;
+        let certs: Vec<&str> = json["certs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(certs, vec!["newbank"]);
     }
 
     #[tokio::test]
