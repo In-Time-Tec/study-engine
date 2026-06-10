@@ -21,6 +21,8 @@ import type { SessionsResponse } from './generated/SessionsResponse'
 import type { CertsResponse } from './generated/CertsResponse'
 import type { BankInfo } from './generated/BankInfo'
 import type { BanksResponse } from './generated/BanksResponse'
+import type { ReviewedCard } from './generated/ReviewedCard'
+import type { PendingSessionResponse } from './generated/PendingSessionResponse'
 
 export const questionSchema = z.object({
   id: z.string(),
@@ -86,6 +88,7 @@ export const statsResponseSchema = z.object({
   total: z.number(),
   introduced: z.number(),
   dueToday: z.number(),
+  nextDue: z.string().nullable(),
   newAvailable: z.number(),
   mastered: z.number(),
   domains: z.array(domainStatSchema),
@@ -116,3 +119,20 @@ export const bankInfoSchema = z.object({
 export const banksResponseSchema = z.object({
   banks: z.array(bankInfoSchema)
 }) satisfies z.ZodType<BanksResponse>
+
+export const reviewedCardSchema = z.object({
+  cardId: z.string(),
+  isCorrect: z.boolean(),
+  rating: z.number(),
+  selectedLetter: z.string().nullable(),
+  domain: z.number(),
+  correctAnswer: z.string(),
+  questionText: z.string()
+}) satisfies z.ZodType<ReviewedCard>
+
+export const pendingSessionResponseSchema = z.object({
+  cardIds: z.array(z.string()),
+  controlMode: z.string(),
+  controlDomain: z.number().nullable(),
+  reviewedCards: z.array(reviewedCardSchema)
+}) satisfies z.ZodType<PendingSessionResponse>

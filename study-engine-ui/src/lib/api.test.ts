@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
+  clearPendingSession,
   deleteBank,
   fetchBanks,
   fetchCerts,
@@ -7,8 +8,10 @@ import {
   fetchQuestions,
   fetchSessions,
   fetchStats,
+  loadPendingSession,
   postReview,
   postSession,
+  savePendingSession,
   uploadBank
 } from './api'
 
@@ -47,7 +50,7 @@ describe('GET endpoints', () => {
   test('fetchStats defaults the cert and accepts an override', async () => {
     fetchMock.mockResolvedValue(ok({
       cert: 'cca-f', certName: 'CCA', total: 1, introduced: 0, dueToday: 0,
-      newAvailable: 0, mastered: 0, domains: [], tags: [], sessions: []
+      nextDue: null, newAvailable: 0, mastered: 0, domains: [], tags: [], sessions: []
     }))
     await fetchStats()
     expect(lastUrl()).toBe('/api/stats?cert=cca-f')
@@ -109,7 +112,7 @@ describe('GET endpoints', () => {
 })
 
 describe('POST endpoints', () => {
-  test('postReview posts the review payload', async () => {
+  test('postReview posts the review payload without selected when omitted', async () => {
     fetchMock.mockResolvedValue(ok({}))
     await postReview({ cardId: 'q1', rating: 3, isCorrect: true })
     const [url, init] = lastCall()
@@ -123,12 +126,54 @@ describe('POST endpoints', () => {
     })
   })
 
+  test('postReview includes selected letter when provided', async () => {
+    fetchMock.mockResolvedValue(ok({}))
+    await postReview({ cardId: 'q1', rating: 1, isCorrect: false, selected: 'C' })
+    const body = JSON.parse(lastCall()[1]?.body as string)
+    expect(body.selected).toBe('C')
+  })
+
+  test('savePendingSession posts card IDs and control state', async () => {
+    fetchMock.mockResolvedValue(ok({ ok: true }))
+    await savePendingSession({ cert: 'cca-f', cardIds: ['q1', 'q2'], controlMode: 'due', controlDomain: null })
+    const [url, init] = lastCall()
+    expect(url).toBe('/api/pending-session')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(init?.body as string)).toEqual({
+      cert: 'cca-f', cardIds: ['q1', 'q2'], controlMode: 'due', controlDomain: null
+    })
+  })
+
   test('postSession posts the session payload', async () => {
     fetchMock.mockResolvedValue(ok({}))
     await postSession({ total: 10, correct: 8 })
     const [url, init] = lastCall()
     expect(url).toBe('/api/session')
     expect(JSON.parse(init?.body as string)).toEqual({ cert: 'cca-f', total: 10, correct: 8 })
+  })
+})
+
+describe('pending session', () => {
+  test('loadPendingSession returns null on 404', async () => {
+    fetchMock.mockResolvedValue(notOk({ error: 'no pending session' }, 404))
+    expect(await loadPendingSession('cca-f')).toBeNull()
+    expect(lastUrl()).toContain('/api/pending-session')
+    expect(lastUrl()).toContain('cert=cca-f')
+  })
+
+  test('loadPendingSession returns parsed response on success', async () => {
+    const body = { cardIds: ['q1'], controlMode: 'due', controlDomain: null, reviewedCards: [] }
+    fetchMock.mockResolvedValue(ok(body))
+    expect(await loadPendingSession('cca-f')).toEqual(body)
+  })
+
+  test('clearPendingSession issues a DELETE with cert param', async () => {
+    fetchMock.mockResolvedValue(ok({ ok: true }))
+    await clearPendingSession('cca-f')
+    const [url, init] = lastCall()
+    expect(url).toContain('/api/pending-session')
+    expect(url).toContain('cert=cca-f')
+    expect(init?.method).toBe('DELETE')
   })
 })
 

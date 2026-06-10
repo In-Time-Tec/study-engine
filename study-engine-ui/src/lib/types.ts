@@ -17,6 +17,8 @@ export type { StatsResponse as Stats } from './generated/StatsResponse'
 export type { SessionItem as SessionRecord } from './generated/SessionItem'
 export type { BankInfo } from './generated/BankInfo'
 export type { BanksResponse } from './generated/BanksResponse'
+export type { ReviewedCard } from './generated/ReviewedCard'
+export type { PendingSessionResponse } from './generated/PendingSessionResponse'
 
 // A study card is the backend's question+state pair. The bare-`Question` arm of
 // the union is retained for callers that build plain cards; `isWrappedCard`

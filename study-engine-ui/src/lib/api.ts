@@ -1,8 +1,9 @@
-import type { Stats, DueResponse, FetchDueOptions, QuestionsResponse, SessionsResponse, BankInfo } from './types'
+import type { Stats, DueResponse, FetchDueOptions, QuestionsResponse, SessionsResponse, BankInfo, PendingSessionResponse } from './types'
 import {
   banksResponseSchema,
   certsResponseSchema,
   dueResponseSchema,
+  pendingSessionResponseSchema,
   questionsResponseSchema,
   sessionsResponseSchema,
   statsResponseSchema
@@ -100,19 +101,53 @@ export async function postReview({
   cardId,
   cert = 'cca-f',
   rating,
-  isCorrect
+  isCorrect,
+  selected
 }: {
   cardId: string
   cert?: string
   rating: number
   isCorrect: boolean
+  selected?: string | null
 }): Promise<unknown> {
   const r = await fetch(`${BASE}/review`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cardId, cert, rating, isCorrect })
+    body: JSON.stringify({ cardId, cert, rating, isCorrect, selected })
   })
   return checked(r)
+}
+
+export async function savePendingSession({
+  cert,
+  cardIds,
+  controlMode,
+  controlDomain
+}: {
+  cert: string
+  cardIds: string[]
+  controlMode: string
+  controlDomain: number | null
+}): Promise<void> {
+  const r = await fetch(`${BASE}/pending-session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cert, cardIds, controlMode, controlDomain })
+  })
+  await checked(r)
+}
+
+export async function loadPendingSession(cert: string): Promise<PendingSessionResponse | null> {
+  const params = new URLSearchParams({ cert })
+  const r = await fetch(`${BASE}/pending-session?${params}`)
+  if (r.status === 404) return null
+  return pendingSessionResponseSchema.parse(await checked(r))
+}
+
+export async function clearPendingSession(cert: string): Promise<void> {
+  const params = new URLSearchParams({ cert })
+  const r = await fetch(`${BASE}/pending-session?${params}`, { method: 'DELETE' })
+  await checked(r)
 }
 
 export async function postSession({
