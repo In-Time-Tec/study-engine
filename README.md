@@ -6,17 +6,25 @@ algorithm, stores your progress in SQLite, and serves a small Svelte web UI for
 review. Bring your own question bank as JSON; the engine is
 certification-agnostic.
 
+## Prerequisites
+
+- **Rust** (for the CLI/backend). Install via [rustup](https://rustup.rs):
+  - macOS / Linux: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+  - Windows: download and run [`rustup-init.exe`](https://rustup.rs)
+- **Node.js** 18+ (for the web UI and the launcher).
+
 ## Quick start
 
-The fastest path runs the whole stack with one script:
+The fastest path runs the whole stack with one cross-platform script
+(macOS, Linux, and Windows):
 
 ```bash
-./boot.sh
+node boot.mjs
 ```
 
 That builds the CLI, starts the HTTP API on `:3001`, and serves the web UI on
 `:5173`. Open <http://localhost:5173>, go to **Settings**, and upload a
-`<name>.json` question bank to get started.
+`<name>.json` question bank to get started. Press Ctrl-C to stop both.
 
 Prefer the terminal? The CLI alone needs no Node:
 

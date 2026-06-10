@@ -14,7 +14,7 @@ study-engine is a local-first spaced-repetition study tool. The engine is certif
 
 ### Full dev stack
 ```bash
-./boot.sh          # builds CLI, starts backend on :3001 and UI on :5173
+node boot.mjs      # cross-platform (macOS/Linux/Windows): builds CLI, starts backend on :3001 and UI on :5173
 ```
 
 ### Backend (study-engine-cli/)
