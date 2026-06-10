@@ -17,13 +17,17 @@ const api = vi.hoisted(() => ({
   postSession: vi.fn(),
   fetchBanks: vi.fn(),
   uploadBank: vi.fn(),
-  deleteBank: vi.fn()
+  deleteBank: vi.fn(),
+  savePendingSession: vi.fn(),
+  loadPendingSession: vi.fn(),
+  clearPendingSession: vi.fn()
 }))
 
 vi.mock('./api', () => api)
 
 const statsFull: Stats = {
   dueToday: 3,
+  nextDue: '2026-06-10',
   newAvailable: 7,
   mastered: 9,
   total: 20,
@@ -46,6 +50,7 @@ const statsFull: Stats = {
 
 const statsEmptyProgress: Stats = {
   dueToday: 0,
+  nextDue: null,
   newAvailable: 4,
   mastered: 0,
   total: 4,
@@ -165,6 +170,9 @@ function resetApi(): void {
   api.postReview.mockResolvedValue({})
   api.postSession.mockResolvedValue({})
   api.fetchBanks.mockResolvedValue([])
+  api.loadPendingSession.mockResolvedValue(null)
+  api.savePendingSession.mockResolvedValue(undefined)
+  api.clearPendingSession.mockResolvedValue(undefined)
 }
 
 describe('Dashboard', () => {
@@ -318,7 +326,8 @@ describe('StudySession', () => {
       cardId: 'q1',
       cert: 'cca-f',
       rating: 1,
-      isCorrect: false
+      isCorrect: false,
+      selected: 'A'
     }))
     await screen.findByText('Which input shape is safest?')
     expect(document.querySelector('.session-progress')).toHaveTextContent('Card 2 / 2')
@@ -372,7 +381,8 @@ describe('StudySession', () => {
       cardId: 'q3',
       cert: 'cca-f',
       rating: 3,
-      isCorrect: true
+      isCorrect: true,
+      selected: 'C'
     })
 
     await fireEvent.click(screen.getByRole('button', { name: 'Back to Dashboard' }))
@@ -430,7 +440,7 @@ describe('StudySession', () => {
     // key '2' in revealed phase with correct answer → rate Good (3)
     await fireEvent.keyDown(document.body, { key: '2' })
     await waitFor(() => expect(api.postReview).toHaveBeenCalledWith({
-      cardId: 'q1', cert: 'cca-f', rating: 3, isCorrect: true
+      cardId: 'q1', cert: 'cca-f', rating: 3, isCorrect: true, selected: 'B'
     }))
     await screen.findByText('Which input shape is safest?')
 
@@ -439,7 +449,7 @@ describe('StudySession', () => {
     expect(screen.getByText('✗ Incorrect — correct answer: A')).toBeInTheDocument()
     await fireEvent.keyDown(document.body, { key: '1' })
     await waitFor(() => expect(api.postReview).toHaveBeenCalledWith({
-      cardId: 'q2', cert: 'cca-f', rating: 1, isCorrect: false
+      cardId: 'q2', cert: 'cca-f', rating: 1, isCorrect: false, selected: 'B'
     }))
   })
 
@@ -572,6 +582,8 @@ describe('App', () => {
     render(App)
 
     expect(await screen.findByText('Due Today', { selector: '.stat-label' })).toBeInTheDocument()
+    expect(screen.getByText('Next session')).toBeInTheDocument()
+    expect(screen.getByText('Due today (3)')).toBeInTheDocument()
 
     // The Study nav button launches the default due session directly
     await fireEvent.click(screen.getByRole('button', { name: 'Study' }))
@@ -627,18 +639,19 @@ describe('App', () => {
     expect(await screen.findByText('Upload a Bank')).toBeInTheDocument()
   })
 
-  test('renders a bank selector and switches the active bank when multiple certs exist', async () => {
+  test('renders a bank selector in Settings and switches the active bank when multiple certs exist', async () => {
     api.fetchCerts.mockResolvedValue(['cca-f', 'aws-saa'])
     api.fetchStats.mockResolvedValue(statsFull)
 
     render(App)
     await screen.findByText('Due Today', { selector: '.stat-label' })
 
-    const bankSelect = screen.getByLabelText('Bank:') as HTMLSelectElement
+    await fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    const bankSelect = await screen.findByLabelText('Active bank') as HTMLSelectElement
     expect(bankSelect.value).toBe('cca-f')
     expect(screen.getByRole('option', { name: 'aws-saa' })).toBeInTheDocument()
 
     await fireEvent.change(bankSelect, { target: { value: 'aws-saa' } })
-    expect(bankSelect.value).toBe('aws-saa')
+    await waitFor(() => expect(bankSelect.value).toBe('aws-saa'))
   })
 })

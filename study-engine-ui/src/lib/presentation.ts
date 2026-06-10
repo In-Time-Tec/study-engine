@@ -23,6 +23,40 @@ export function tagLabel(pct: number): string {
   return '▼ needs work'
 }
 
+export interface NextSessionStats {
+  dueToday: number
+  nextDue: string | null
+  newAvailable: number
+}
+
+export function formatScheduleDate(date: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
+  if (!match) return date
+
+  const [, year, month, day] = match
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  }).format(new Date(Number(year), Number(month) - 1, Number(day)))
+}
+
+export function nextSessionDueText(
+  stats: NextSessionStats | null,
+  loading = false,
+  error: string | null = null,
+  hasBank = true
+): string {
+  if (loading) return 'Checking'
+  if (!hasBank) return 'No bank'
+  if (error) return 'Unavailable'
+  if (!stats) return 'Checking'
+  if (stats.dueToday > 0) return stats.dueToday === 1 ? 'Due today (1)' : `Due today (${stats.dueToday})`
+  if (stats.nextDue) return `Due ${formatScheduleDate(stats.nextDue)}`
+  if (stats.newAvailable > 0) return 'New cards ready'
+  return 'All caught up'
+}
+
 export function localDateString(date = new Date()): string {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')

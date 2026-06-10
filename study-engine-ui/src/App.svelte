@@ -1,11 +1,14 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, untrack } from 'svelte'
   import Dashboard from './lib/Dashboard.svelte'
   import StudySession from './lib/StudySession.svelte'
   import Browse from './lib/Browse.svelte'
   import History from './lib/History.svelte'
   import Settings from './lib/Settings.svelte'
-  import { fetchCerts } from './lib/api'
+  import { fetchCerts, fetchStats } from './lib/api'
+  import { nextSessionDueText } from './lib/presentation'
+  import { loadSelectedCert, saveSelectedCert } from './lib/certSelection'
+  import type { Stats } from './lib/types'
 
   let tab: string = $state('dashboard')
   let studyMode: string = $state('due')
@@ -15,6 +18,14 @@
   let certs: string[] = $state([])
   let cert: string = $state('')
   let certsLoading = $state(true)
+  let headerStats: Stats | null = $state(null)
+  let headerStatsLoading = $state(false)
+  let headerStatsError: string | null = $state(null)
+  let statsRequest = 0
+
+  let nextSessionText = $derived(
+    nextSessionDueText(headerStats, certsLoading || headerStatsLoading, headerStatsError, Boolean(cert))
+  )
 
   onMount(async () => {
     try {
@@ -26,13 +37,24 @@
     }
   })
 
+  $effect(() => {
+    const selectedCert = cert
+    untrack(() => {
+      if (selectedCert) saveSelectedCert(selectedCert)
+      void refreshHeaderStats(selectedCert)
+    })
+  })
+
   // Adopt a refreshed cert list. Prefer an explicitly requested bank (e.g. one
-  // just uploaded), otherwise keep the current selection if it survived, else
-  // fall back to the first available bank.
+  // just uploaded), then the current selection if it survived, then the last
+  // selection persisted across reloads, else the first available bank.
   function applyCerts(next: string[], select?: string): void {
     certs = next
     if (select && next.includes(select)) cert = select
-    else if (!cert || !next.includes(cert)) cert = next[0] ?? ''
+    else if (!cert || !next.includes(cert)) {
+      const stored = loadSelectedCert()
+      cert = stored && next.includes(stored) ? stored : (next[0] ?? '')
+    }
   }
 
   function onCertsChanged(data: { certs: string[]; select?: string }): void {
@@ -63,6 +85,7 @@
 
   function studyDone(): void {
     tab = 'dashboard'
+    void refreshHeaderStats(cert)
   }
 
   function startDefaultStudy(): void {
@@ -70,6 +93,30 @@
     studyDomain = null
     quizIds = null
     tab = 'study'
+  }
+
+  async function refreshHeaderStats(selectedCert: string): Promise<void> {
+    const request = ++statsRequest
+    if (!selectedCert) {
+      headerStats = null
+      headerStatsLoading = false
+      headerStatsError = null
+      return
+    }
+
+    headerStatsLoading = true
+    headerStatsError = null
+    try {
+      const stats = await fetchStats(selectedCert)
+      if (request !== statsRequest) return
+      headerStats = stats
+    } catch (e) {
+      if (request !== statsRequest) return
+      headerStats = null
+      headerStatsError = (e as Error).message
+    } finally {
+      if (request === statsRequest) headerStatsLoading = false
+    }
   }
 </script>
 
@@ -85,6 +132,13 @@
       </button>
     {/each}
   </nav>
+  <div
+    class="session-due"
+    title={headerStatsError ? `Next session unavailable: ${headerStatsError}` : 'Next session due'}
+  >
+    <span class="session-due-label">Next session</span>
+    <span class="session-due-value">{nextSessionText}</span>
+  </div>
 </div>
 
 <div class="content">
@@ -92,7 +146,7 @@
     <div class="loading">loading…</div>
 
   {:else if tab === 'settings'}
-    <Settings oncertsChanged={onCertsChanged} />
+    <Settings oncertsChanged={onCertsChanged} {cert} {certs} />
 
   {:else if !cert}
     <div class="empty">
@@ -101,15 +155,10 @@
     </div>
 
   {:else}
-    {#if certs.length > 1}
-      <div style="padding: 8px 16px; display:flex; align-items:center; gap:8px; font-size:13px;">
-        <label for="cert-select">Bank:</label>
-        <select id="cert-select" class="filter-select" bind:value={cert}>{#each certs as c}<option value={c}>{c}</option>{/each}</select>
-      </div>
-    {/if}
-
     {#if tab === 'dashboard'}
-      <Dashboard {cert} onstudy={goStudy} />
+      {#key cert}
+        <Dashboard {cert} onstudy={goStudy} />
+      {/key}
 
     {:else if tab === 'study'}
       {#key studyMode + '|' + (quizIds ? quizIds.join(',') : '') + '|' + (studyDomain ?? '') + '|' + cert}
