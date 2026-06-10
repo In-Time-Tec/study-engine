@@ -197,10 +197,10 @@ mod tests {
 
         let mastered = reviewed_card("q1", "test", 3, "2020-01-01");
         let learning = reviewed_card("q2", "test", 1, "2099-01-01");
-        db.record_review(&mastered, "q1", "test", true, 4).unwrap();
-        db.record_review(&mastered, "q1", "test", true, 4).unwrap();
-        db.record_review(&learning, "q2", "test", true, 3).unwrap();
-        db.record_review(&learning, "q2", "test", false, 1).unwrap();
+        db.record_review(&mastered, "q1", "test", true, 4, None).unwrap();
+        db.record_review(&mastered, "q1", "test", true, 4, None).unwrap();
+        db.record_review(&learning, "q2", "test", true, 3, None).unwrap();
+        db.record_review(&learning, "q2", "test", false, 1, None).unwrap();
         db.insert_session("test", 4, 3).unwrap();
 
         show(&questions, &bank, &db, "test").unwrap();

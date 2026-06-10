@@ -34,6 +34,7 @@ pub struct ProgressSummary {
     pub total: u32,
     pub introduced: u32,
     pub due_today: u32,
+    pub next_due: Option<String>,
     pub new_available: u32,
     pub mastered: u32,
     pub domains: Vec<DomainProgress>,
@@ -87,6 +88,16 @@ pub fn summarize_progress(
                 .is_some_and(|due| due <= today)
         })
         .count() as u32;
+    let next_due = if due_today > 0 {
+        Some(today.to_string())
+    } else {
+        questions
+            .iter()
+            .filter_map(|q| card_map.get(q.id.as_str()).and_then(|c| c.due.as_deref()))
+            .filter(|due| *due > today)
+            .min()
+            .map(str::to_string)
+    };
     let mastered = questions
         .iter()
         .filter(|q| card_map.get(q.id.as_str()).is_some_and(|c| c.reps >= 3))
@@ -154,6 +165,7 @@ pub fn summarize_progress(
         total,
         introduced,
         due_today,
+        next_due,
         new_available: total - introduced,
         mastered,
         domains,
@@ -207,6 +219,7 @@ mod tests {
         assert_eq!(summary.introduced, 2);
         assert_eq!(summary.new_available, 1);
         assert_eq!(summary.due_today, 1);
+        assert_eq!(summary.next_due.as_deref(), Some("2026-06-05"));
         assert_eq!(summary.mastered, 1);
         assert_eq!(summary.domains[0].review_correct, 2);
         assert_eq!(summary.domains[0].review_total, 3);
@@ -220,5 +233,30 @@ mod tests {
         assert_eq!(summary.tags[1].tag, "shared");
         assert_eq!(summary.tags[1].accuracy, 66);
         assert_eq!(summary.sessions[0].accuracy, 66);
+    }
+
+    #[test]
+    fn summarize_progress_reports_earliest_future_due_when_nothing_due_today() {
+        let bank = crate::questions::tests::test_bank();
+        let questions = bank.filter(None, None);
+        let cards = vec![
+            card("q1", Some("2026-06-12"), 1),
+            card("q2", Some("2026-06-08"), 1),
+        ];
+
+        let summary = summarize_progress(&bank, &questions, &cards, &[], &[], "2026-06-05");
+
+        assert_eq!(summary.due_today, 0);
+        assert_eq!(summary.next_due.as_deref(), Some("2026-06-08"));
+    }
+
+    #[test]
+    fn summarize_progress_has_no_next_due_without_scheduled_cards() {
+        let bank = crate::questions::tests::test_bank();
+        let questions = bank.filter(None, None);
+
+        let summary = summarize_progress(&bank, &questions, &[], &[], &[], "2026-06-05");
+
+        assert_eq!(summary.next_due, None);
     }
 }
