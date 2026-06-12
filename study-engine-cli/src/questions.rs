@@ -17,6 +17,54 @@ pub struct Question {
     pub tags: Vec<String>,
 }
 
+impl Question {
+    /// Permute which letter holds which option, so the correct letter is
+    /// uniform across a bank instead of whatever the bank author (often an
+    /// LLM) favored. Seeded by the question id alone, so a question's layout
+    /// is identical on every load — review history (`selected_letter`) and
+    /// resumed sessions stay coherent across fetches and restarts.
+    fn shuffle_options(&mut self) {
+        let mut keys: Vec<String> = self.options.keys().cloned().collect();
+        keys.sort();
+
+        // FNV-1a over the id, then xorshift64* — both fixed here rather than
+        // pulled from a crate so the permutation can never change under a
+        // dependency upgrade.
+        let mut state = keys
+            .iter()
+            .flat_map(|k| k.bytes())
+            .chain(self.id.bytes())
+            .fold(0xcbf29ce484222325u64, |h, b| {
+                (h ^ b as u64).wrapping_mul(0x100000001b3)
+            })
+            | 1;
+        let mut next = move || {
+            state ^= state >> 12;
+            state ^= state << 25;
+            state ^= state >> 27;
+            state.wrapping_mul(0x2545F4914F6CDD1D)
+        };
+
+        // Fisher-Yates on a copy of the key list: slot `keys[i]` receives the
+        // option that lived at `perm[i]`.
+        let mut perm = keys.clone();
+        for i in (1..perm.len()).rev() {
+            perm.swap(i, (next() % (i as u64 + 1)) as usize);
+        }
+
+        self.options = keys
+            .iter()
+            .zip(&perm)
+            .map(|(slot, source)| (slot.clone(), self.options[source].clone()))
+            .collect();
+        self.answer = keys
+            .into_iter()
+            .zip(perm)
+            .find_map(|(slot, source)| (source == self.answer).then_some(slot))
+            .expect("answer key validated to exist in options");
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Bank {
     #[allow(dead_code)]
@@ -38,8 +86,11 @@ impl Bank {
     /// (reading from disk) and the upload endpoint (validating uploaded text),
     /// so both enforce the exact same rules.
     pub fn parse(raw: &str) -> Result<Self> {
-        let bank: Bank = serde_json::from_str(raw).context("Failed to parse question JSON")?;
+        let mut bank: Bank = serde_json::from_str(raw).context("Failed to parse question JSON")?;
         bank.validate()?;
+        for q in &mut bank.questions {
+            q.shuffle_options();
+        }
         Ok(bank)
     }
 
@@ -295,6 +346,80 @@ pub mod tests {
         let raw = TEST_BANK_JSON.replace(r#""answer": "C""#, r#""answer": "Z""#);
         let err = Bank::parse(&raw).unwrap_err();
         assert!(err.to_string().contains("is not in options"));
+    }
+
+    #[test]
+    fn shuffle_options_is_deterministic_across_parses() {
+        let a = Bank::parse(TEST_BANK_JSON).unwrap();
+        let b = Bank::parse(TEST_BANK_JSON).unwrap();
+        for (qa, qb) in a.questions.iter().zip(&b.questions) {
+            assert_eq!(qa.answer, qb.answer);
+            assert_eq!(qa.options, qb.options);
+        }
+    }
+
+    #[test]
+    fn shuffle_preserves_answer_text_and_option_set() {
+        let authored: Bank = serde_json::from_str(TEST_BANK_JSON).unwrap();
+        let parsed = Bank::parse(TEST_BANK_JSON).unwrap();
+        for (orig, shuf) in authored.questions.iter().zip(&parsed.questions) {
+            // The letter may move, but it must still point at the same text.
+            assert_eq!(orig.options[&orig.answer], shuf.options[&shuf.answer]);
+
+            let mut orig_keys: Vec<_> = orig.options.keys().collect();
+            let mut shuf_keys: Vec<_> = shuf.options.keys().collect();
+            orig_keys.sort();
+            shuf_keys.sort();
+            assert_eq!(orig_keys, shuf_keys);
+
+            let mut orig_vals: Vec<_> = orig.options.values().collect();
+            let mut shuf_vals: Vec<_> = shuf.options.values().collect();
+            orig_vals.sort();
+            shuf_vals.sort();
+            assert_eq!(orig_vals, shuf_vals);
+        }
+    }
+
+    #[test]
+    fn shuffle_breaks_answer_letter_skew() {
+        // A bank authored with every answer on "B" — the failure mode that
+        // motivated the shuffle — must not come out all-"B".
+        let questions: Vec<String> = (0..26)
+            .map(|i| {
+                format!(
+                    r#"{{"id": "skew-{i}", "domain": 1, "scenario": "s", "question": "q",
+                        "options": {{"A": "a{i}", "B": "b{i}", "C": "c{i}", "D": "d{i}"}},
+                        "answer": "B", "explanation": "e"}}"#
+                )
+            })
+            .collect();
+        let raw = format!(
+            r#"{{"cert": "t", "name": "T", "domains": {{"1": "One"}}, "questions": [{}]}}"#,
+            questions.join(",")
+        );
+
+        let bank = Bank::parse(&raw).unwrap();
+        let on_b = bank.questions.iter().filter(|q| q.answer == "B").count();
+        assert!(on_b < 26, "shuffle left every answer on B");
+        // And every remapped letter still names the authored correct text.
+        for q in &bank.questions {
+            assert!(q.options[&q.answer].starts_with('b'));
+        }
+    }
+
+    #[test]
+    fn shuffle_single_option_question_is_noop() {
+        let raw = r#"{
+            "cert": "t", "name": "T",
+            "domains": {"1": "One"},
+            "questions": [
+                {"id": "q1", "domain": 1, "scenario": "s", "question": "q",
+                 "options": {"A": "only"}, "answer": "A", "explanation": "e"}
+            ]
+        }"#;
+        let bank = Bank::parse(raw).unwrap();
+        assert_eq!(bank.questions[0].answer, "A");
+        assert_eq!(bank.questions[0].options["A"], "only");
     }
 
     #[test]
