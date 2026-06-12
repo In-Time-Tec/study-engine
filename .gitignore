@@ -36,6 +36,8 @@ Attachments/
 CCA/
 Learning.md
 
-# CCA-F question bank — excluded pending a provenance/licensing decision
-# (substantially derived from Anthropic's exam guide). Kept locally for personal use.
-questions/
+# Question banks
+# Keep the approved CCA-F bank tracked as the out-of-box default, while local
+# practice banks and backups stay private.
+questions/*
+!questions/cca-f.json

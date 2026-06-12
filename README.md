@@ -3,8 +3,9 @@
 A local-first spaced-repetition study tool. A Rust CLI schedules and grades
 multiple-choice questions with the [FSRS](https://github.com/open-spaced-repetition)
 algorithm, stores your progress in SQLite, and serves a small Svelte web UI for
-review. Bring your own question bank as JSON; the engine is
-certification-agnostic.
+review. It ships with the Claude Certified Architect Foundations (`cca-f`)
+bank as the default, and remains certification-agnostic for any JSON bank you
+add.
 
 ## Prerequisites
 
@@ -23,8 +24,9 @@ node boot.mjs
 ```
 
 That builds the CLI, starts the HTTP API on `:3001`, and serves the web UI on
-`:5173`. Open <http://localhost:5173>, go to **Settings**, and upload a
-`<name>.json` question bank to get started. Press Ctrl-C to stop both.
+`:5173`. Open <http://localhost:5173> and start studying the bundled `cca-f`
+bank, or go to **Settings** to upload another `<name>.json` bank. Press Ctrl-C
+to stop both.
 
 Prefer the terminal? The CLI alone needs no Node:
 
@@ -37,7 +39,8 @@ cargo build --release
 ## CLI usage
 
 ```bash
-study-engine --cert <name>            # pick a bank (no default assumed)
+study-engine                         # study the default cca-f bank
+study-engine --cert <name>            # pick another bank
 study-engine study --domain 3         # filter to one domain
 study-engine study --tag hooks        # filter to one concept tag
 study-engine stats                    # progress dashboard
@@ -50,9 +53,10 @@ Again automatically; correct answers let you choose Good or Easy by confidence.
 
 ## Question banks
 
-A bank is a single JSON file named `<cert>.json`. Upload one through the web
-UI's Settings tab, or drop it directly into the questions directory and restart
-the server. The shape:
+A bank is a single JSON file named `<cert>.json`. The repository includes
+`questions/cca-f.json` as the default bank for fresh clones. Upload additional
+banks through the web UI's Settings tab, or drop them directly into the
+questions directory and restart the server. The shape:
 
 ```json
 {
@@ -103,8 +107,8 @@ progress; the question banks themselves are never modified by the study loop.
   `studySessionState.ts`; wire types under `src/lib/generated/` are produced by
   the backend and must not be hand-edited; `api.ts` validates every response
   against Zod schemas at the fetch boundary.
-- **`questions/`** — JSON banks (gitignored; managed via Settings or dropped in
-  manually).
+- **`questions/`** — JSON banks. `cca-f.json` is tracked as the bundled default;
+  other local banks are ignored unless explicitly added.
 
 `CLAUDE.md` documents modules, data flow, and test conventions in detail. Both
 test suites (`cargo test` and `npm run test:coverage`) plus a Playwright e2e

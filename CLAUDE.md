@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Projects
 
-study-engine is a local-first spaced-repetition study tool. The engine is certification-agnostic; bring your own `<cert>.json` question bank. Two codebases live here side by side, plus the questions directory:
+study-engine is a local-first spaced-repetition study tool. It ships with the Claude Certified Architect Foundations (`cca-f`) bank as the default while remaining certification-agnostic for additional `<cert>.json` banks. Two codebases live here side by side, plus the questions directory:
 
 - **`study-engine-cli/`** — Rust backend: CLI study tool + Axum HTTP API server
 - **`study-engine-ui/`** — Svelte 4 + Vite frontend
-- **`questions/`** — JSON question banks (gitignored; one file per cert, e.g. `my-cert.json`)
+- **`questions/`** — JSON question banks (`cca-f.json` is tracked as the bundled default; other local banks are ignored unless explicitly added)
 
 ## Commands
 
@@ -38,7 +38,8 @@ npm run e2e            # Playwright suite (requires built backend binary)
 
 ### CLI usage
 ```bash
-study-engine --cert <name>                # pick a bank
+study-engine                              # study the default cca-f bank
+study-engine --cert <name>                # pick another bank
 study-engine study --domain 3             # filter to domain 3
 study-engine stats                        # progress dashboard
 study-engine all                          # quiz every question, shuffled
