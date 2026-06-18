@@ -15,6 +15,27 @@ pub struct Question {
     pub explanation: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Glossary terms (or aliases) that must NOT be tooltipped while this
+    /// question is unanswered — for definitional questions, the definition of
+    /// the term under test would give the answer away.
+    #[serde(default, rename = "glossaryExclude")]
+    pub glossary_exclude: Vec<String>,
+}
+
+/// A term of art defined once per bank and surfaced as a tooltip wherever the
+/// term appears in question text. `source_url` is rendered as an outbound link,
+/// so validation restricts it to http(s).
+#[derive(Debug, Deserialize, Serialize, Clone, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct GlossaryEntry {
+    pub term: String,
+    /// Other surface forms of the same concept (abbreviations, plurals).
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    pub definition: String,
+    pub source_url: String,
+    #[serde(default)]
+    pub source_title: Option<String>,
 }
 
 impl Question {
@@ -71,6 +92,8 @@ pub struct Bank {
     pub cert: String,
     pub name: String,
     pub domains: HashMap<String, String>,
+    #[serde(default)]
+    pub glossary: Vec<GlossaryEntry>,
     pub questions: Vec<Question>,
 }
 
@@ -95,6 +118,34 @@ impl Bank {
     }
 
     fn validate(&self) -> Result<()> {
+        // Every surface form (term or alias) a glossary entry can be matched
+        // or excluded by, lowercased. Built first so question-level
+        // `glossaryExclude` lists can be checked against it.
+        let mut surfaces = HashSet::new();
+        for entry in &self.glossary {
+            if entry.term.trim().is_empty() {
+                bail!("Glossary terms cannot be empty");
+            }
+            if entry.definition.trim().is_empty() {
+                bail!("Glossary term '{}' has an empty definition", entry.term);
+            }
+            if !entry.source_url.starts_with("https://") && !entry.source_url.starts_with("http://")
+            {
+                bail!(
+                    "Glossary term '{}' source URL must start with http:// or https://",
+                    entry.term
+                );
+            }
+            for surface in std::iter::once(&entry.term).chain(&entry.aliases) {
+                if surface.trim().is_empty() {
+                    bail!("Glossary term '{}' has an empty alias", entry.term);
+                }
+                if !surfaces.insert(surface.trim().to_lowercase()) {
+                    bail!("Duplicate glossary term or alias: {surface}");
+                }
+            }
+        }
+
         let mut ids = HashSet::new();
         for q in &self.questions {
             if q.id.trim().is_empty() {
@@ -111,6 +162,15 @@ impl Bank {
             }
             if !q.options.contains_key(&q.answer) {
                 bail!("Question {} answer {} is not in options", q.id, q.answer);
+            }
+            for excl in &q.glossary_exclude {
+                if !surfaces.contains(&excl.trim().to_lowercase()) {
+                    bail!(
+                        "Question {} excludes unknown glossary term '{}'",
+                        q.id,
+                        excl
+                    );
+                }
             }
         }
         Ok(())
@@ -143,6 +203,15 @@ pub mod tests {
             "1": "Domain One",
             "2": "Domain Two"
         },
+        "glossary": [
+            {
+                "term": "widget",
+                "aliases": ["widgets"],
+                "definition": "A small reusable part.",
+                "sourceUrl": "https://example.com/widget",
+                "sourceTitle": "Widget docs"
+            }
+        ],
         "questions": [
             {
                 "id": "q1",
@@ -152,7 +221,8 @@ pub mod tests {
                 "options": {"A": "Opt A", "B": "Opt B", "C": "Opt C", "D": "Opt D"},
                 "answer": "A",
                 "explanation": "A solves the problem.",
-                "tags": ["tag-a", "shared"]
+                "tags": ["tag-a", "shared"],
+                "glossaryExclude": ["widget"]
             },
             {
                 "id": "q2",
@@ -420,6 +490,91 @@ pub mod tests {
         let bank = Bank::parse(raw).unwrap();
         assert_eq!(bank.questions[0].answer, "A");
         assert_eq!(bank.questions[0].options["A"], "only");
+    }
+
+    #[test]
+    fn parse_keeps_glossary_and_excludes() {
+        let bank = Bank::parse(TEST_BANK_JSON).unwrap();
+        assert_eq!(bank.glossary.len(), 1);
+        assert_eq!(bank.glossary[0].term, "widget");
+        assert_eq!(bank.glossary[0].aliases, vec!["widgets"]);
+        assert_eq!(bank.glossary[0].source_title.as_deref(), Some("Widget docs"));
+        assert_eq!(bank.questions[0].glossary_exclude, vec!["widget"]);
+        assert!(bank.questions[1].glossary_exclude.is_empty());
+    }
+
+    #[test]
+    fn parse_bank_without_glossary_defaults_empty() {
+        let raw = r#"{
+            "cert": "t", "name": "T",
+            "domains": {"1": "One"},
+            "questions": [
+                {"id": "q1", "domain": 1, "scenario": "s", "question": "q",
+                 "options": {"A": "a"}, "answer": "A", "explanation": "e"}
+            ]
+        }"#;
+        let bank = Bank::parse(raw).unwrap();
+        assert!(bank.glossary.is_empty());
+        assert!(bank.questions[0].glossary_exclude.is_empty());
+    }
+
+    #[test]
+    fn parse_rejects_empty_glossary_term() {
+        let raw = TEST_BANK_JSON.replace(r#""term": "widget""#, r#""term": "  ""#);
+        let err = Bank::parse(&raw).unwrap_err();
+        assert!(err.to_string().contains("Glossary terms cannot be empty"));
+    }
+
+    #[test]
+    fn parse_rejects_empty_glossary_definition() {
+        let raw = TEST_BANK_JSON.replace(r#""definition": "A small reusable part.""#, r#""definition": """#);
+        let err = Bank::parse(&raw).unwrap_err();
+        assert!(err.to_string().contains("empty definition"));
+    }
+
+    #[test]
+    fn parse_rejects_non_http_source_url() {
+        let raw = TEST_BANK_JSON.replace(
+            r#""sourceUrl": "https://example.com/widget""#,
+            r#""sourceUrl": "javascript:alert(1)""#,
+        );
+        let err = Bank::parse(&raw).unwrap_err();
+        assert!(err.to_string().contains("must start with http"));
+    }
+
+    #[test]
+    fn parse_rejects_empty_glossary_alias() {
+        let raw = TEST_BANK_JSON.replace(r#""aliases": ["widgets"]"#, r#""aliases": [" "]"#);
+        let err = Bank::parse(&raw).unwrap_err();
+        assert!(err.to_string().contains("empty alias"));
+    }
+
+    #[test]
+    fn parse_rejects_duplicate_glossary_surface() {
+        // An alias colliding with the term (case-insensitively) is ambiguous.
+        let raw = TEST_BANK_JSON.replace(r#""aliases": ["widgets"]"#, r#""aliases": ["Widget"]"#);
+        let err = Bank::parse(&raw).unwrap_err();
+        assert!(err.to_string().contains("Duplicate glossary term or alias"));
+    }
+
+    #[test]
+    fn parse_rejects_unknown_glossary_exclude() {
+        let raw = TEST_BANK_JSON.replace(
+            r#""glossaryExclude": ["widget"]"#,
+            r#""glossaryExclude": ["gadget"]"#,
+        );
+        let err = Bank::parse(&raw).unwrap_err();
+        assert!(err.to_string().contains("unknown glossary term 'gadget'"));
+    }
+
+    #[test]
+    fn exclude_may_name_an_alias() {
+        let raw = TEST_BANK_JSON.replace(
+            r#""glossaryExclude": ["widget"]"#,
+            r#""glossaryExclude": ["WIDGETS"]"#,
+        );
+        let bank = Bank::parse(&raw).unwrap();
+        assert_eq!(bank.questions[0].glossary_exclude, vec!["WIDGETS"]);
     }
 
     #[test]

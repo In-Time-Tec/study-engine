@@ -17,7 +17,7 @@ use ts_rs::TS;
 
 use crate::db::{CardState, Db};
 use crate::progress::summarize_progress;
-use crate::questions::{Bank, Question};
+use crate::questions::{Bank, GlossaryEntry, Question};
 use crate::session::{ScheduledReview, apply_review, fsrs_next};
 use crate::study_plan::plan_study_session;
 
@@ -211,6 +211,7 @@ struct DueResponse {
     new_count: usize,
     new_remaining: usize,
     mode: String,
+    glossary: Vec<GlossaryEntry>,
 }
 
 #[derive(Serialize, TS)]
@@ -220,6 +221,7 @@ struct QuestionsResponse {
     cert_name: String,
     domains: HashMap<String, String>,
     questions: Vec<CardWithQuestion>,
+    glossary: Vec<GlossaryEntry>,
 }
 
 #[derive(Serialize, TS)]
@@ -457,6 +459,7 @@ async fn get_due(
                 new_count: n,
                 new_remaining: 0,
                 mode: "all".into(),
+                glossary: bank.glossary.clone(),
             });
         }
 
@@ -475,6 +478,7 @@ async fn get_due(
                 new_count: n,
                 new_remaining: 0,
                 mode: "quiz".into(),
+                glossary: bank.glossary.clone(),
             });
         }
 
@@ -496,6 +500,7 @@ async fn get_due(
                 .iter()
                 .map(|q| card_with_q(q, &card_map))
                 .collect(),
+            glossary: bank.glossary.clone(),
         })
     })
     .await
@@ -533,6 +538,7 @@ async fn get_questions(
         Ok(QuestionsResponse {
             cert_name: bank.name.clone(),
             domains: bank.domains.clone(),
+            glossary: bank.glossary.clone(),
             cert,
             questions: filtered
                 .into_iter()
@@ -887,6 +893,7 @@ mod ts_bindings {
         }
         export!(
             Question,
+            GlossaryEntry,
             CardState,
             CardWithQuestion,
             DueResponse,
@@ -1132,6 +1139,53 @@ mod handler_tests {
         let json = body_json(resp).await;
         assert_eq!(json["mode"], "quiz");
         assert_eq!(json["cards"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn get_due_includes_bank_glossary() {
+        let app = build_test_app();
+        let resp = app
+            .router
+            .oneshot(
+                Request::get("/api/due?cert=test&new=5")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp).await;
+        let glossary = json["glossary"].as_array().unwrap();
+        assert_eq!(glossary.len(), 1);
+        assert_eq!(glossary[0]["term"], "widget");
+        assert_eq!(glossary[0]["sourceUrl"], "https://example.com/widget");
+        // q1 carries its exclusion through the wire.
+        let q1 = json["cards"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|card| &card["question"])
+            .find(|q| q["id"] == "q1")
+            .unwrap();
+        assert_eq!(q1["glossaryExclude"][0], "widget");
+    }
+
+    #[tokio::test]
+    async fn get_questions_includes_bank_glossary() {
+        let app = build_test_app();
+        let resp = app
+            .router
+            .oneshot(
+                Request::get("/api/questions?cert=test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp).await;
+        assert_eq!(json["glossary"].as_array().unwrap().len(), 1);
+        assert_eq!(json["glossary"][0]["definition"], "A small reusable part.");
     }
 
     #[tokio::test]

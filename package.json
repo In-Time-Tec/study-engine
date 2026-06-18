@@ -1,0 +1,16 @@
+{
+  "name": "study-engine",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "study-engine-ui"
+  ],
+  "scripts": {
+    "dev": "node boot.mjs",
+    "typecheck": "npm run typecheck --workspace study-engine-ui",
+    "test": "npm run test --workspace study-engine-ui",
+    "test:coverage": "npm run test:coverage --workspace study-engine-ui",
+    "e2e": "npm run e2e --workspace study-engine-ui",
+    "build": "npm run build --workspace study-engine-ui && node scripts/package-sites.mjs"
+  }
+}

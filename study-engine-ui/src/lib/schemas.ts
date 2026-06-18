@@ -23,6 +23,7 @@ import type { BankInfo } from './generated/BankInfo'
 import type { BanksResponse } from './generated/BanksResponse'
 import type { ReviewedCard } from './generated/ReviewedCard'
 import type { PendingSessionResponse } from './generated/PendingSessionResponse'
+import type { GlossaryEntry } from './generated/GlossaryEntry'
 
 export const questionSchema = z.object({
   id: z.string(),
@@ -32,8 +33,17 @@ export const questionSchema = z.object({
   options: z.record(z.string(), z.string()),
   answer: z.string(),
   explanation: z.string(),
-  tags: z.array(z.string())
+  tags: z.array(z.string()),
+  glossaryExclude: z.array(z.string())
 }) satisfies z.ZodType<Question>
+
+export const glossaryEntrySchema = z.object({
+  term: z.string(),
+  aliases: z.array(z.string()),
+  definition: z.string(),
+  sourceUrl: z.string(),
+  sourceTitle: z.string().nullable()
+}) satisfies z.ZodType<GlossaryEntry>
 
 export const cardStateSchema = z.object({
   id: z.string(),
@@ -79,7 +89,8 @@ export const dueResponseSchema = z.object({
   dueCount: z.number(),
   newCount: z.number(),
   newRemaining: z.number(),
-  mode: z.string()
+  mode: z.string(),
+  glossary: z.array(glossaryEntrySchema)
 }) satisfies z.ZodType<DueResponse>
 
 export const statsResponseSchema = z.object({
@@ -100,7 +111,8 @@ export const questionsResponseSchema = z.object({
   cert: z.string(),
   certName: z.string(),
   domains: z.record(z.string(), z.string()),
-  questions: z.array(cardWithQuestionSchema)
+  questions: z.array(cardWithQuestionSchema),
+  glossary: z.array(glossaryEntrySchema)
 }) satisfies z.ZodType<QuestionsResponse>
 
 export const sessionsResponseSchema = z.object({

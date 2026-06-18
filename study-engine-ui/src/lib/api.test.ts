@@ -59,7 +59,7 @@ describe('GET endpoints', () => {
   })
 
   test('fetchDue omits optional params by default', async () => {
-    fetchMock.mockResolvedValue(ok({ cards: [], dueCount: 0, newCount: 0, newRemaining: 0, mode: 'study' }))
+    fetchMock.mockResolvedValue(ok({ cards: [], dueCount: 0, newCount: 0, newRemaining: 0, mode: 'study', glossary: [] }))
     await fetchDue()
     const url = lastUrl()
     expect(url).toContain('cert=cca-f')
@@ -71,7 +71,7 @@ describe('GET endpoints', () => {
   })
 
   test('fetchDue includes every optional param when provided', async () => {
-    fetchMock.mockResolvedValue(ok({ cards: [], dueCount: 0, newCount: 0, newRemaining: 0, mode: 'study' }))
+    fetchMock.mockResolvedValue(ok({ cards: [], dueCount: 0, newCount: 0, newRemaining: 0, mode: 'study', glossary: [] }))
     await fetchDue({ cert: 'x', maxNew: 10, domain: 3, tag: 'tools', ids: ['q1', 'q2'], all: true })
     const url = lastUrl()
     expect(url).toContain('new=10')
@@ -82,13 +82,13 @@ describe('GET endpoints', () => {
   })
 
   test('fetchDue treats an empty ids array as no filter', async () => {
-    fetchMock.mockResolvedValue(ok({ cards: [], dueCount: 0, newCount: 0, newRemaining: 0, mode: 'study' }))
+    fetchMock.mockResolvedValue(ok({ cards: [], dueCount: 0, newCount: 0, newRemaining: 0, mode: 'study', glossary: [] }))
     await fetchDue({ ids: [] })
     expect(lastUrl()).not.toContain('ids=')
   })
 
   test('fetchQuestions omits and includes optional filters', async () => {
-    fetchMock.mockResolvedValue(ok({ cert: 'cca-f', certName: 'CCA', domains: {}, questions: [] }))
+    fetchMock.mockResolvedValue(ok({ cert: 'cca-f', certName: 'CCA', domains: {}, questions: [], glossary: [] }))
     await fetchQuestions()
     let url = lastUrl()
     expect(url).not.toContain('domain=')

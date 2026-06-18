@@ -20,13 +20,15 @@ The fastest path runs the whole stack with one cross-platform script
 (macOS, Linux, and Windows):
 
 ```bash
-node boot.mjs
+npm install
+npm run dev
 ```
 
-That builds the CLI, starts the HTTP API on `:3001`, and serves the web UI on
-`:5173`. Open <http://localhost:5173> and start studying the bundled `cca-f`
-bank, or go to **Settings** to upload another `<name>.json` bank. Press Ctrl-C
-to stop both.
+`npm install` installs the Svelte/Vite UI dependencies from the root workspace.
+Then `npm run dev` builds the CLI, starts the HTTP API on `:3001`, and serves
+the web UI on `:5173`. Open <http://localhost:5173> and start studying the
+bundled `cca-f` bank, or go to **Settings** to upload another `<name>.json`
+bank. Press Ctrl-C to stop both.
 
 Prefer the terminal? The CLI alone needs no Node:
 
