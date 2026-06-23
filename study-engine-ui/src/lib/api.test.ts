@@ -1,18 +1,24 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   clearPendingSession,
+  createGroupRoom,
   deleteBank,
+  endGroupRoom,
   fetchBanks,
   fetchCerts,
   fetchDue,
+  fetchGroupRoom,
   fetchQuestions,
   fetchSessions,
   fetchStats,
   loadPendingSession,
+  nextGroupRoom,
   postReview,
   postSession,
+  revealGroupRoom,
   savePendingSession,
-  uploadBank
+  uploadBank,
+  voteGroupRoom
 } from './api'
 
 const fetchMock = vi.fn()
@@ -30,6 +36,26 @@ function lastCall(): [string, RequestInit | undefined] {
 }
 function lastUrl(): string {
   return lastCall()[0]
+}
+
+const groupState = {
+  code: 'ABC234',
+  cert: 'cca-f',
+  status: 'voting',
+  currentIndex: 0,
+  totalQuestions: 2,
+  currentQuestion: {
+    id: 'q1',
+    domain: 1,
+    scenario: 'Scenario',
+    question: 'Question?',
+    options: { A: 'One', B: 'Two' }
+  },
+  voteCounts: [{ answer: 'A', count: 1 }, { answer: 'B', count: 0 }],
+  totalVotes: 1,
+  selectedAnswer: null,
+  correctAnswer: null,
+  explanation: null
 }
 
 beforeEach(() => {
@@ -109,6 +135,22 @@ describe('GET endpoints', () => {
     await fetchSessions({ limit: 5 })
     expect(lastUrl()).toContain('limit=5')
   })
+
+  test('fetchGroupRoom includes participant and host token when provided', async () => {
+    fetchMock.mockResolvedValue(ok(groupState))
+    await fetchGroupRoom({ code: 'ABC234', participantId: 'p1', hostToken: 'secret' })
+    const [url, init] = lastCall()
+    expect(url).toBe('/api/group-rooms/ABC234?participantId=p1')
+    expect(init?.headers).toEqual({ 'X-Group-Host-Token': 'secret' })
+  })
+
+  test('fetchGroupRoom omits optional query and headers by default', async () => {
+    fetchMock.mockResolvedValue(ok(groupState))
+    await fetchGroupRoom({ code: 'ABC234' })
+    const [url, init] = lastCall()
+    expect(url).toBe('/api/group-rooms/ABC234')
+    expect(init?.headers).toBeUndefined()
+  })
 })
 
 describe('POST endpoints', () => {
@@ -150,6 +192,47 @@ describe('POST endpoints', () => {
     const [url, init] = lastCall()
     expect(url).toBe('/api/session')
     expect(JSON.parse(init?.body as string)).toEqual({ cert: 'cca-f', total: 10, correct: 8 })
+  })
+
+  test('createGroupRoom posts the cert and parses the room response', async () => {
+    const body = { code: 'ABC234', hostToken: 'secret', joinUrl: 'http://x/?room=ABC234', state: groupState }
+    fetchMock.mockResolvedValue(ok(body))
+    expect(await createGroupRoom('cca-f')).toEqual(body)
+    const [url, init] = lastCall()
+    expect(url).toBe('/api/group-rooms')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(init?.body as string)).toEqual({ cert: 'cca-f' })
+  })
+
+  test('createGroupRoom defaults to the bundled cert', async () => {
+    const body = { code: 'ABC234', hostToken: 'secret', joinUrl: 'http://x/?room=ABC234', state: groupState }
+    fetchMock.mockResolvedValue(ok(body))
+    await createGroupRoom()
+    expect(JSON.parse(lastCall()[1]?.body as string)).toEqual({ cert: 'cca-f' })
+  })
+
+  test('voteGroupRoom posts participant answer', async () => {
+    fetchMock.mockResolvedValue(ok({ ...groupState, selectedAnswer: 'B' }))
+    await voteGroupRoom({ code: 'ABC234', participantId: 'p1', answer: 'B' })
+    const [url, init] = lastCall()
+    expect(url).toBe('/api/group-rooms/ABC234/vote')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(init?.body as string)).toEqual({ participantId: 'p1', answer: 'B' })
+  })
+
+  test('host group actions post the host token header', async () => {
+    fetchMock.mockResolvedValue(ok({ ...groupState, status: 'revealed', correctAnswer: 'A' }))
+    await revealGroupRoom('ABC234', 'secret')
+    expect(lastCall()).toEqual([
+      '/api/group-rooms/ABC234/reveal',
+      { method: 'POST', headers: { 'X-Group-Host-Token': 'secret' } }
+    ])
+
+    await nextGroupRoom('ABC234', 'secret')
+    expect(lastUrl()).toBe('/api/group-rooms/ABC234/next')
+
+    await endGroupRoom('ABC234', 'secret')
+    expect(lastUrl()).toBe('/api/group-rooms/ABC234/end')
   })
 })
 

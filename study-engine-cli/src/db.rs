@@ -38,9 +38,38 @@ CREATE TABLE IF NOT EXISTS pending_sessions (
     control_domain  INTEGER,
     started_at      TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS group_rooms (
+    code          TEXT PRIMARY KEY,
+    host_token    TEXT NOT NULL,
+    cert          TEXT NOT NULL,
+    card_ids      TEXT NOT NULL,
+    current_index INTEGER NOT NULL DEFAULT 0,
+    status        TEXT NOT NULL,
+    created_at    TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS group_votes (
+    code             TEXT NOT NULL,
+    card_id          TEXT NOT NULL,
+    participant_id   TEXT NOT NULL,
+    selected_answer  TEXT NOT NULL,
+    updated_at       TEXT NOT NULL,
+    PRIMARY KEY (code, card_id, participant_id)
+);
+CREATE INDEX IF NOT EXISTS group_votes_room_card_idx ON group_votes (code, card_id);
 ";
 
 pub struct Db(Connection);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupRoomRecord {
+    pub code: String,
+    pub host_token: String,
+    pub cert: String,
+    pub card_ids_json: String,
+    pub current_index: usize,
+    pub status: String,
+    pub created_at: String,
+}
 
 #[derive(Debug, Default, Clone, serde::Serialize, TS)]
 pub struct CardState {
@@ -203,7 +232,13 @@ impl Db {
             "INSERT OR REPLACE INTO pending_sessions
              (cert, card_ids, control_mode, control_domain, started_at)
              VALUES (?1,?2,?3,?4,?5)",
-            params![cert, card_ids_json, control_mode, control_domain, started_at],
+            params![
+                cert,
+                card_ids_json,
+                control_mode,
+                control_domain,
+                started_at
+            ],
         )?;
         Ok(())
     }
@@ -256,15 +291,12 @@ impl Db {
             placeholders
         );
         let mut stmt = self.0.prepare(&sql)?;
-        let mut raw_params: Vec<Box<dyn rusqlite::ToSql>> = vec![
-            Box::new(cert.to_string()),
-            Box::new(since.to_string()),
-        ];
+        let mut raw_params: Vec<Box<dyn rusqlite::ToSql>> =
+            vec![Box::new(cert.to_string()), Box::new(since.to_string())];
         for id in card_ids {
             raw_params.push(Box::new(id.to_string()));
         }
-        let param_refs: Vec<&dyn rusqlite::ToSql> =
-            raw_params.iter().map(|b| b.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::ToSql> = raw_params.iter().map(|b| b.as_ref()).collect();
         let rows = stmt.query_map(param_refs.as_slice(), |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -280,6 +312,127 @@ impl Db {
         self.0.execute(
             "DELETE FROM pending_sessions WHERE cert = ?1",
             params![cert],
+        )?;
+        Ok(())
+    }
+
+    pub fn cleanup_old_group_rooms(&self, before: &str) -> Result<()> {
+        self.0.execute(
+            "DELETE FROM group_votes WHERE code IN (
+                SELECT code FROM group_rooms WHERE created_at < ?1
+             )",
+            params![before],
+        )?;
+        self.0.execute(
+            "DELETE FROM group_rooms WHERE created_at < ?1",
+            params![before],
+        )?;
+        Ok(())
+    }
+
+    pub fn insert_group_room(
+        &self,
+        code: &str,
+        host_token: &str,
+        cert: &str,
+        card_ids_json: &str,
+        created_at: &str,
+    ) -> Result<()> {
+        self.0.execute(
+            "INSERT INTO group_rooms
+             (code, host_token, cert, card_ids, current_index, status, created_at)
+             VALUES (?1, ?2, ?3, ?4, 0, 'voting', ?5)",
+            params![code, host_token, cert, card_ids_json, created_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_group_room(&self, code: &str) -> Result<Option<GroupRoomRecord>> {
+        let res = self.0.query_row(
+            "SELECT code, host_token, cert, card_ids, current_index, status, created_at
+             FROM group_rooms WHERE code = ?1",
+            params![code],
+            |row| {
+                Ok(GroupRoomRecord {
+                    code: row.get(0)?,
+                    host_token: row.get(1)?,
+                    cert: row.get(2)?,
+                    card_ids_json: row.get(3)?,
+                    current_index: row.get::<_, u32>(4)? as usize,
+                    status: row.get(5)?,
+                    created_at: row.get(6)?,
+                })
+            },
+        );
+        match res {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn save_group_vote(
+        &self,
+        code: &str,
+        card_id: &str,
+        participant_id: &str,
+        selected_answer: &str,
+    ) -> Result<()> {
+        let updated_at = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        self.0.execute(
+            "INSERT OR REPLACE INTO group_votes
+             (code, card_id, participant_id, selected_answer, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![code, card_id, participant_id, selected_answer, updated_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn group_vote_counts(&self, code: &str, card_id: &str) -> Result<Vec<(String, u32)>> {
+        let mut stmt = self.0.prepare(
+            "SELECT selected_answer, COUNT(*)
+             FROM group_votes
+             WHERE code = ?1 AND card_id = ?2
+             GROUP BY selected_answer",
+        )?;
+        let rows = stmt.query_map(params![code, card_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn group_vote_for_participant(
+        &self,
+        code: &str,
+        card_id: &str,
+        participant_id: &str,
+    ) -> Result<Option<String>> {
+        let res = self.0.query_row(
+            "SELECT selected_answer
+             FROM group_votes
+             WHERE code = ?1 AND card_id = ?2 AND participant_id = ?3",
+            params![code, card_id, participant_id],
+            |row| row.get::<_, String>(0),
+        );
+        match res {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn update_group_room_status(&self, code: &str, status: &str) -> Result<()> {
+        self.0.execute(
+            "UPDATE group_rooms SET status = ?2 WHERE code = ?1",
+            params![code, status],
+        )?;
+        Ok(())
+    }
+
+    pub fn advance_group_room(&self, code: &str, current_index: usize, status: &str) -> Result<()> {
+        self.0.execute(
+            "UPDATE group_rooms SET current_index = ?2, status = ?3 WHERE code = ?1",
+            params![code, current_index as u32, status],
         )?;
         Ok(())
     }
@@ -548,7 +701,8 @@ mod tests {
     fn record_review_and_get_card_round_trip() {
         let db = new_db();
         let card = sample_card("q1", "cert-a");
-        db.record_review(&card, "q1", "cert-a", true, 4, None).unwrap();
+        db.record_review(&card, "q1", "cert-a", true, 4, None)
+            .unwrap();
 
         let retrieved = db.get_card("cert-a", "q1").unwrap();
         assert_eq!(retrieved.id, "q1");
@@ -563,8 +717,10 @@ mod tests {
     fn record_review_stores_review_history() {
         let db = new_db();
         let card = sample_card("q-rev", "cert-a");
-        db.record_review(&card, "q-rev", "cert-a", true, 4, None).unwrap();
-        db.record_review(&card, "q-rev", "cert-a", false, 1, None).unwrap();
+        db.record_review(&card, "q-rev", "cert-a", true, 4, None)
+            .unwrap();
+        db.record_review(&card, "q-rev", "cert-a", false, 1, None)
+            .unwrap();
 
         let reviews = db.reviews_for("cert-a", "q-rev").unwrap();
         assert_eq!(reviews.len(), 2);
@@ -622,8 +778,10 @@ mod tests {
         let db = new_db();
         let card_a = sample_card("r1", "certA");
         let card_b = sample_card("r2", "certB");
-        db.record_review(&card_a, "r1", "certA", true, 4, None).unwrap();
-        db.record_review(&card_b, "r2", "certB", false, 1, None).unwrap();
+        db.record_review(&card_a, "r1", "certA", true, 4, None)
+            .unwrap();
+        db.record_review(&card_b, "r2", "certB", false, 1, None)
+            .unwrap();
 
         let revs_a = db.all_reviews("certA").unwrap();
         assert_eq!(revs_a.len(), 1);
@@ -668,8 +826,10 @@ mod tests {
         cert_b.reps = 4;
         cert_b.due = Some("2026-08-01".to_string());
 
-        db.record_review(&cert_a, "shared", "cert-a", true, 4, None).unwrap();
-        db.record_review(&cert_b, "shared", "cert-b", true, 4, None).unwrap();
+        db.record_review(&cert_a, "shared", "cert-a", true, 4, None)
+            .unwrap();
+        db.record_review(&cert_b, "shared", "cert-b", true, 4, None)
+            .unwrap();
 
         let card_a = db.get_card("cert-a", "shared").unwrap();
         let card_b = db.get_card("cert-b", "shared").unwrap();
@@ -686,8 +846,10 @@ mod tests {
         let cert_a = sample_card("shared-review", "cert-a");
         let cert_b = sample_card("shared-review", "cert-b");
 
-        db.record_review(&cert_a, "shared-review", "cert-a", true, 4, None).unwrap();
-        db.record_review(&cert_b, "shared-review", "cert-b", false, 1, None).unwrap();
+        db.record_review(&cert_a, "shared-review", "cert-a", true, 4, None)
+            .unwrap();
+        db.record_review(&cert_b, "shared-review", "cert-b", false, 1, None)
+            .unwrap();
 
         assert_eq!(
             db.reviews_for("cert-a", "shared-review").unwrap(),
@@ -727,7 +889,8 @@ mod tests {
 
         let db = Db::open_at(&path).unwrap();
         let cert_b = sample_card("shared", "cert-b");
-        db.record_review(&cert_b, "shared", "cert-b", true, 4, None).unwrap();
+        db.record_review(&cert_b, "shared", "cert-b", true, 4, None)
+            .unwrap();
 
         assert_eq!(db.get_card("cert-a", "shared").unwrap().reps, 1);
         assert_eq!(db.get_card("cert-b", "shared").unwrap().cert, "cert-b");

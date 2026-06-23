@@ -65,11 +65,11 @@
 
         <p>
           The <strong>Study</strong> tab runs everything due plus a few new
-          cards on the schedule. Flip its <strong>Due / All</strong> toggle to
-          <strong>All</strong> for a shuffled pass over the whole bank that
-          ignores scheduling, handy before an exam. Narrow a session to one area
-          with the tab's domain filter, or click any bar under
-          <strong>By Domain</strong> below.
+          cards on the schedule. Flip its <strong>Due / All / Group</strong>
+          toggle to <strong>All</strong> for a shuffled pass over the whole bank,
+          or <strong>Group</strong> for a live room with anonymous votes. Narrow
+          a due session to one area with the tab's domain filter, or click any
+          bar under <strong>By Domain</strong> below.
         </p>
 
         <p>

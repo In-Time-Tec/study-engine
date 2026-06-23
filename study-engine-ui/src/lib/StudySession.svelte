@@ -3,6 +3,7 @@
   import { fade, fly } from 'svelte/transition'
   import { cubicOut } from 'svelte/easing'
   import { clearPendingSession, fetchDue, fetchStats, loadPendingSession, postReview, postSession, savePendingSession } from './api'
+  import GroupHost from './GroupHost.svelte'
   import { barClass, studyCardLabel } from './presentation'
   import {
     correctCount as countCorrect,
@@ -53,7 +54,7 @@
   // untrack() reads the initial prop value without establishing a reactive dependency —
   // these are intentional one-time seeds, not derived values.
   const interactive: boolean = untrack(() => mode !== 'custom')
-  let controlMode: Exclude<StudyMode, 'custom'> = $state(untrack(() => mode === 'all' ? 'all' : 'due'))
+  let controlMode: Exclude<StudyMode, 'custom'> = $state(untrack(() => mode === 'all' ? 'all' : mode === 'group' ? 'group' : 'due'))
   let controlDomain: number | null = $state(untrack(() => domain))
   let domains: DomainStat[] = $state([])
 
@@ -62,6 +63,12 @@
   }
 
   async function loadSession(): Promise<void> {
+    if (interactive && controlMode === 'group') {
+      clearPendingSession(cert).catch(() => {})
+      confirmingEnd = false
+      phase = 'empty'
+      return
+    }
     clearPendingSession(cert).catch(() => {})
     confirmingEnd = false
     phase = 'loading'
@@ -106,6 +113,10 @@
     }
 
     if (interactive) {
+      if (controlMode === 'group') {
+        phase = 'empty'
+        return
+      }
       try {
         const pending = await loadPendingSession(cert)
         if (pending && pending.cardIds.length > 0) {
@@ -147,7 +158,20 @@
   function setMode(m: Exclude<StudyMode, 'custom'>): void {
     if (controlMode === m) return
     controlMode = m
+    if (m === 'group') {
+      clearPendingSession(cert).catch(() => {})
+      confirmingEnd = false
+      saveError = null
+      phase = 'empty'
+      return
+    }
     loadSession()
+  }
+
+  function handleModeKey(e: KeyboardEvent, m: Exclude<StudyMode, 'custom'>): void {
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    e.preventDefault()
+    setMode(m)
   }
 
   function selectAnswer(letter: string): void {
@@ -229,11 +253,33 @@
 
 <svelte:window onkeydown={handleKey} />
 
-{#if interactive && phase !== 'loading' && phase !== 'error'}
+{#if interactive && (controlMode === 'group' || (phase !== 'loading' && phase !== 'error'))}
   <div class="study-controls">
     <div class="seg-toggle" role="group" aria-label="Study mode">
-      <button class:active={controlMode === 'due'} onclick={() => setMode('due')}>Due</button>
-      <button class:active={controlMode === 'all'} onclick={() => setMode('all')}>All</button>
+      <div
+        class="seg-control {controlMode === 'due' ? 'seg-active' : ''}"
+        role="button"
+        tabindex="0"
+        aria-pressed={controlMode === 'due'}
+        onclick={() => setMode('due')}
+        onkeydown={(e) => handleModeKey(e, 'due')}
+      >Due</div>
+      <div
+        class="seg-control {controlMode === 'all' ? 'seg-active' : ''}"
+        role="button"
+        tabindex="0"
+        aria-pressed={controlMode === 'all'}
+        onclick={() => setMode('all')}
+        onkeydown={(e) => handleModeKey(e, 'all')}
+      >All</div>
+      <div
+        class="seg-control {controlMode === 'group' ? 'seg-active' : ''}"
+        role="button"
+        tabindex="0"
+        aria-pressed={controlMode === 'group'}
+        onclick={() => setMode('group')}
+        onkeydown={(e) => handleModeKey(e, 'group')}
+      >Group</div>
     </div>
     {#if controlMode === 'due'}
       <select class="filter-select" aria-label="Domain" bind:value={controlDomain} onchange={loadSession}>
@@ -246,7 +292,10 @@
   </div>
 {/if}
 
-{#if phase === 'loading'}
+{#if interactive && controlMode === 'group'}
+  <GroupHost {cert} {ondone} />
+
+{:else if phase === 'loading'}
   <div class="loading">loading session…</div>
 
 {:else if phase === 'error'}

@@ -1,8 +1,10 @@
-import type { Stats, DueResponse, FetchDueOptions, QuestionsResponse, SessionsResponse, BankInfo, PendingSessionResponse } from './types'
+import type { Stats, DueResponse, FetchDueOptions, QuestionsResponse, SessionsResponse, BankInfo, PendingSessionResponse, CreateGroupRoomResponse, GroupRoomState } from './types'
 import {
   banksResponseSchema,
   certsResponseSchema,
+  createGroupRoomResponseSchema,
   dueResponseSchema,
+  groupRoomStateSchema,
   pendingSessionResponseSchema,
   questionsResponseSchema,
   sessionsResponseSchema,
@@ -177,4 +179,68 @@ export async function fetchSessions({
   const params = new URLSearchParams({ cert, limit: String(limit) })
   const r = await fetch(`${BASE}/sessions?${params}`)
   return sessionsResponseSchema.parse(await checked(r))
+}
+
+export async function createGroupRoom(cert = 'cca-f'): Promise<CreateGroupRoomResponse> {
+  const r = await fetch(`${BASE}/group-rooms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cert })
+  })
+  return createGroupRoomResponseSchema.parse(await checked(r))
+}
+
+export async function fetchGroupRoom({
+  code,
+  participantId = null,
+  hostToken = null
+}: {
+  code: string
+  participantId?: string | null
+  hostToken?: string | null
+}): Promise<GroupRoomState> {
+  const params = new URLSearchParams()
+  if (participantId) params.set('participantId', participantId)
+  const suffix = params.toString() ? `?${params}` : ''
+  const r = await fetch(`${BASE}/group-rooms/${encodeURIComponent(code)}${suffix}`, {
+    headers: hostToken ? { 'X-Group-Host-Token': hostToken } : undefined
+  })
+  return groupRoomStateSchema.parse(await checked(r))
+}
+
+export async function voteGroupRoom({
+  code,
+  participantId,
+  answer
+}: {
+  code: string
+  participantId: string
+  answer: string
+}): Promise<GroupRoomState> {
+  const r = await fetch(`${BASE}/group-rooms/${encodeURIComponent(code)}/vote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ participantId, answer })
+  })
+  return groupRoomStateSchema.parse(await checked(r))
+}
+
+async function postGroupHostAction(code: string, hostToken: string, action: 'reveal' | 'next' | 'end'): Promise<GroupRoomState> {
+  const r = await fetch(`${BASE}/group-rooms/${encodeURIComponent(code)}/${action}`, {
+    method: 'POST',
+    headers: { 'X-Group-Host-Token': hostToken }
+  })
+  return groupRoomStateSchema.parse(await checked(r))
+}
+
+export async function revealGroupRoom(code: string, hostToken: string): Promise<GroupRoomState> {
+  return postGroupHostAction(code, hostToken, 'reveal')
+}
+
+export async function nextGroupRoom(code: string, hostToken: string): Promise<GroupRoomState> {
+  return postGroupHostAction(code, hostToken, 'next')
+}
+
+export async function endGroupRoom(code: string, hostToken: string): Promise<GroupRoomState> {
+  return postGroupHostAction(code, hostToken, 'end')
 }

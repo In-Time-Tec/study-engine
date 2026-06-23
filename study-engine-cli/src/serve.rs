@@ -2,11 +2,11 @@ use anyhow::Context;
 use axum::{
     Router,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json},
     routing::{delete, get, post},
 };
-use chrono::Local;
+use chrono::{Duration, Local};
 use fsrs::FSRS;
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use ts_rs::TS;
 
-use crate::db::{CardState, Db};
+use crate::db::{CardState, Db, GroupRoomRecord};
 use crate::progress::summarize_progress;
 use crate::questions::{Bank, GlossaryEntry, Question};
 use crate::session::{ScheduledReview, apply_review, fsrs_next};
@@ -54,6 +54,20 @@ impl ApiError {
     fn conflict(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::CONFLICT,
+            error: anyhow::anyhow!(message.into()),
+        }
+    }
+
+    fn forbidden(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::FORBIDDEN,
+            error: anyhow::anyhow!(message.into()),
+        }
+    }
+
+    fn not_found(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::NOT_FOUND,
             error: anyhow::anyhow!(message.into()),
         }
     }
@@ -148,6 +162,24 @@ struct UploadBankBody {
     /// collision returns 409 and the UI can confirm first.
     #[serde(default)]
     overwrite: bool,
+}
+
+#[derive(Deserialize)]
+struct CreateGroupRoomBody {
+    cert: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GroupRoomParams {
+    participant_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GroupVoteBody {
+    participant_id: String,
+    answer: String,
 }
 
 // ─── Response types ───────────────────────────────────────────────────────────
@@ -267,6 +299,48 @@ struct PendingSessionResponse {
     reviewed_cards: Vec<ReviewedCard>,
 }
 
+#[derive(Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+struct GroupQuestion {
+    id: String,
+    domain: u32,
+    scenario: String,
+    question: String,
+    options: HashMap<String, String>,
+}
+
+#[derive(Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+struct GroupVoteCount {
+    answer: String,
+    count: u32,
+}
+
+#[derive(Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+struct GroupRoomState {
+    code: String,
+    cert: String,
+    status: String,
+    current_index: usize,
+    total_questions: usize,
+    current_question: Option<GroupQuestion>,
+    vote_counts: Vec<GroupVoteCount>,
+    total_votes: u32,
+    selected_answer: Option<String>,
+    correct_answer: Option<String>,
+    explanation: Option<String>,
+}
+
+#[derive(Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+struct CreateGroupRoomResponse {
+    code: String,
+    host_token: String,
+    join_url: String,
+    state: GroupRoomState,
+}
+
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 fn accuracy(correct: u32, total: u32) -> u32 {
@@ -291,6 +365,143 @@ fn session_item(date: String, total: u32, correct: u32) -> SessionItem {
         total,
         correct,
     }
+}
+
+fn group_cleanup_cutoff() -> String {
+    (Local::now() - Duration::hours(8))
+        .format("%Y-%m-%dT%H:%M:%S")
+        .to_string()
+}
+
+fn random_group_code() -> String {
+    const ALPHABET: &[u8] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+    (0..6)
+        .map(|_| ALPHABET[rand::random_range(0..ALPHABET.len())] as char)
+        .collect()
+}
+
+fn random_group_token() -> String {
+    const ALPHABET: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    (0..32)
+        .map(|_| ALPHABET[rand::random_range(0..ALPHABET.len())] as char)
+        .collect()
+}
+
+fn join_url_from_headers(headers: &HeaderMap, code: &str) -> String {
+    let origin = headers
+        .get("origin")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim_end_matches('/').to_string())
+        .or_else(|| {
+            headers
+                .get("host")
+                .and_then(|v| v.to_str().ok())
+                .map(|host| format!("http://{host}"))
+        })
+        .unwrap_or_default();
+    format!("{origin}/?room={code}")
+}
+
+fn normalize_group_code(code: &str) -> String {
+    code.trim().to_ascii_uppercase()
+}
+
+fn host_token_from_headers(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get("x-group-host-token")
+        .and_then(|v| v.to_str().ok())
+}
+
+fn require_group_host(room: &GroupRoomRecord, token: Option<&str>) -> Result<(), ApiError> {
+    if token.is_some_and(|token| token == room.host_token) {
+        Ok(())
+    } else {
+        Err(ApiError::forbidden("Invalid group host token"))
+    }
+}
+
+fn validate_group_answer(answer: &str, q: &Question) -> Result<String, ApiError> {
+    let normalized = answer.trim().to_ascii_uppercase();
+    if normalized.len() != 1 || !q.options.contains_key(&normalized) {
+        return Err(ApiError::bad_request(
+            "Answer is not valid for this question",
+        ));
+    }
+    Ok(normalized)
+}
+
+fn group_question(q: &Question) -> GroupQuestion {
+    GroupQuestion {
+        id: q.id.clone(),
+        domain: q.domain,
+        scenario: q.scenario.clone(),
+        question: q.question.clone(),
+        options: q.options.clone(),
+    }
+}
+
+fn build_group_room_state(
+    db: &Db,
+    room: &GroupRoomRecord,
+    bank: &Bank,
+    participant_id: Option<&str>,
+    include_host_fields: bool,
+) -> Result<GroupRoomState, ApiError> {
+    let card_ids: Vec<String> =
+        serde_json::from_str(&room.card_ids_json).context("deserialize group room card ids")?;
+    let current_id = if room.status == "ended" {
+        None
+    } else {
+        card_ids.get(room.current_index)
+    };
+    let question_map: HashMap<&str, &Question> =
+        bank.questions.iter().map(|q| (q.id.as_str(), q)).collect();
+
+    let current_question = current_id
+        .and_then(|id| question_map.get(id.as_str()))
+        .copied();
+
+    let mut vote_counts = vec![];
+    let mut total_votes = 0;
+    let mut selected_answer = None;
+    if let Some(q) = current_question {
+        let raw_counts = db.group_vote_counts(&room.code, &q.id)?;
+        let count_map: HashMap<String, u32> = raw_counts.into_iter().collect();
+        let mut answers: Vec<String> = q.options.keys().cloned().collect();
+        answers.sort();
+        vote_counts = answers
+            .into_iter()
+            .map(|answer| {
+                let count = count_map.get(&answer).copied().unwrap_or(0);
+                total_votes += count;
+                GroupVoteCount { answer, count }
+            })
+            .collect();
+
+        if let Some(participant_id) = participant_id.filter(|id| !id.trim().is_empty()) {
+            selected_answer =
+                db.group_vote_for_participant(&room.code, &q.id, participant_id.trim())?;
+        }
+    }
+
+    let revealed = room.status == "revealed";
+    Ok(GroupRoomState {
+        code: room.code.clone(),
+        cert: room.cert.clone(),
+        status: room.status.clone(),
+        current_index: room.current_index,
+        total_questions: card_ids.len(),
+        current_question: current_question.map(group_question),
+        vote_counts,
+        total_votes,
+        selected_answer,
+        correct_answer: current_question
+            .filter(|_| revealed)
+            .map(|q| q.answer.clone()),
+        explanation: current_question
+            .filter(|_| revealed && include_host_fields)
+            .map(|q| q.explanation.clone()),
+    })
 }
 
 /// A bank name becomes a filename in `questions_dir`, so it must be a plain
@@ -734,8 +945,7 @@ async fn post_pending_session(
 ) -> ApiResult<serde_json::Value> {
     let cert = state.cert_or_default(body.cert);
     let db_path = state.db_path.clone();
-    let card_ids_json = serde_json::to_string(&body.card_ids)
-        .context("serialize card_ids")?;
+    let card_ids_json = serde_json::to_string(&body.card_ids).context("serialize card_ids")?;
 
     tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
         Db::open_or_at(db_path.as_deref())?.save_pending_session(
@@ -759,47 +969,49 @@ async fn get_pending_session(
     let dir = state.questions_dir.clone();
     let db_path = state.db_path.clone();
 
-    let result = tokio::task::spawn_blocking(move || -> Result<Option<PendingSessionResponse>, ApiError> {
-        let db = Db::open_or_at(db_path.as_deref())?;
-        let Some((card_ids_json, control_mode, control_domain, started_at)) =
-            db.get_pending_session(&cert)?
-        else {
-            return Ok(None);
-        };
+    let result = tokio::task::spawn_blocking(
+        move || -> Result<Option<PendingSessionResponse>, ApiError> {
+            let db = Db::open_or_at(db_path.as_deref())?;
+            let Some((card_ids_json, control_mode, control_domain, started_at)) =
+                db.get_pending_session(&cert)?
+            else {
+                return Ok(None);
+            };
 
-        let card_ids: Vec<String> = serde_json::from_str(&card_ids_json)
-            .context("deserialize card_ids")?;
+            let card_ids: Vec<String> =
+                serde_json::from_str(&card_ids_json).context("deserialize card_ids")?;
 
-        let bank = Bank::load(&dir, &cert)?;
-        let question_map: std::collections::HashMap<&str, &Question> =
-            bank.questions.iter().map(|q| (q.id.as_str(), q)).collect();
+            let bank = Bank::load(&dir, &cert)?;
+            let question_map: std::collections::HashMap<&str, &Question> =
+                bank.questions.iter().map(|q| (q.id.as_str(), q)).collect();
 
-        let id_refs: Vec<&str> = card_ids.iter().map(|s| s.as_str()).collect();
-        let raw_reviews = db.reviews_since(&cert, &id_refs, &started_at)?;
+            let id_refs: Vec<&str> = card_ids.iter().map(|s| s.as_str()).collect();
+            let raw_reviews = db.reviews_since(&cert, &id_refs, &started_at)?;
 
-        let reviewed_cards: Vec<ReviewedCard> = raw_reviews
-            .into_iter()
-            .filter_map(|(card_id, is_correct, rating, selected_letter)| {
-                let q = question_map.get(card_id.as_str())?;
-                Some(ReviewedCard {
-                    card_id,
-                    is_correct,
-                    rating,
-                    selected_letter,
-                    domain: q.domain,
-                    correct_answer: q.answer.clone(),
-                    question_text: q.question.clone(),
+            let reviewed_cards: Vec<ReviewedCard> = raw_reviews
+                .into_iter()
+                .filter_map(|(card_id, is_correct, rating, selected_letter)| {
+                    let q = question_map.get(card_id.as_str())?;
+                    Some(ReviewedCard {
+                        card_id,
+                        is_correct,
+                        rating,
+                        selected_letter,
+                        domain: q.domain,
+                        correct_answer: q.answer.clone(),
+                        question_text: q.question.clone(),
+                    })
                 })
-            })
-            .collect();
+                .collect();
 
-        Ok(Some(PendingSessionResponse {
-            card_ids,
-            control_mode,
-            control_domain,
-            reviewed_cards,
-        }))
-    })
+            Ok(Some(PendingSessionResponse {
+                card_ids,
+                control_mode,
+                control_domain,
+                reviewed_cards,
+            }))
+        },
+    )
     .await
     .context("spawn_blocking panicked")??;
 
@@ -828,6 +1040,246 @@ async fn delete_pending_session(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+async fn post_group_room(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(body): Json<CreateGroupRoomBody>,
+) -> ApiResult<CreateGroupRoomResponse> {
+    let cert = state.cert_or_default(body.cert);
+    let dir = state.questions_dir.clone();
+    let db_path = state.db_path.clone();
+
+    let (code, host_token, room_state) =
+        tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+            let db = Db::open_or_at(db_path.as_deref())?;
+            db.cleanup_old_group_rooms(&group_cleanup_cutoff())?;
+
+            let bank = Bank::load(&dir, &cert)?;
+            if bank.questions.is_empty() {
+                return Err(ApiError::bad_request("Question bank has no questions"));
+            }
+
+            let mut card_ids: Vec<String> = bank.questions.iter().map(|q| q.id.clone()).collect();
+            card_ids.shuffle(&mut rand::rng());
+            let card_ids_json = serde_json::to_string(&card_ids).context("serialize card ids")?;
+            let host_token = random_group_token();
+            let created_at = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+
+            let mut inserted_code = None;
+            for _ in 0..20 {
+                let code = random_group_code();
+                if db.get_group_room(&code)?.is_some() {
+                    continue;
+                }
+                db.insert_group_room(&code, &host_token, &cert, &card_ids_json, &created_at)?;
+                inserted_code = Some(code);
+                break;
+            }
+
+            let code = inserted_code
+                .ok_or_else(|| ApiError::bad_request("Could not allocate a group room code"))?;
+            let room = db
+                .get_group_room(&code)?
+                .ok_or_else(|| ApiError::not_found("Group room was not created"))?;
+            let state = build_group_room_state(&db, &room, &bank, None, true)?;
+            Ok((code, host_token, state))
+        })
+        .await
+        .context("spawn_blocking panicked")??;
+
+    Ok(Json(CreateGroupRoomResponse {
+        join_url: join_url_from_headers(&headers, &code),
+        code,
+        host_token,
+        state: room_state,
+    }))
+}
+
+async fn get_group_room(
+    State(state): State<Arc<AppState>>,
+    Path(code): Path<String>,
+    Query(params): Query<GroupRoomParams>,
+    headers: HeaderMap,
+) -> ApiResult<GroupRoomState> {
+    let dir = state.questions_dir.clone();
+    let db_path = state.db_path.clone();
+    let code = normalize_group_code(&code);
+    let header_token = host_token_from_headers(&headers).map(str::to_string);
+
+    let result = tokio::task::spawn_blocking(move || -> Result<GroupRoomState, ApiError> {
+        let db = Db::open_or_at(db_path.as_deref())?;
+        let room = db
+            .get_group_room(&code)?
+            .ok_or_else(|| ApiError::not_found("Group room not found"))?;
+        let bank = Bank::load(&dir, &room.cert)?;
+        let include_host_fields = header_token
+            .as_deref()
+            .is_some_and(|token| token == room.host_token);
+        build_group_room_state(
+            &db,
+            &room,
+            &bank,
+            params.participant_id.as_deref(),
+            include_host_fields,
+        )
+    })
+    .await
+    .context("spawn_blocking panicked")??;
+
+    Ok(Json(result))
+}
+
+async fn post_group_vote(
+    State(state): State<Arc<AppState>>,
+    Path(code): Path<String>,
+    Json(body): Json<GroupVoteBody>,
+) -> ApiResult<GroupRoomState> {
+    let dir = state.questions_dir.clone();
+    let db_path = state.db_path.clone();
+    let code = normalize_group_code(&code);
+
+    let result = tokio::task::spawn_blocking(move || -> Result<GroupRoomState, ApiError> {
+        let participant_id = body.participant_id.trim();
+        if participant_id.is_empty() {
+            return Err(ApiError::bad_request("participantId is required"));
+        }
+
+        let db = Db::open_or_at(db_path.as_deref())?;
+        let room = db
+            .get_group_room(&code)?
+            .ok_or_else(|| ApiError::not_found("Group room not found"))?;
+        if room.status != "voting" {
+            return Err(ApiError::bad_request("Voting is closed for this question"));
+        }
+
+        let bank = Bank::load(&dir, &room.cert)?;
+        let card_ids: Vec<String> =
+            serde_json::from_str(&room.card_ids_json).context("deserialize group room card ids")?;
+        let card_id = card_ids
+            .get(room.current_index)
+            .ok_or_else(|| ApiError::bad_request("Group room has no current question"))?;
+        let question = bank
+            .questions
+            .iter()
+            .find(|q| q.id == *card_id)
+            .ok_or_else(|| ApiError::bad_request("Current group question is unavailable"))?;
+        let answer = validate_group_answer(&body.answer, question)?;
+
+        db.save_group_vote(&room.code, card_id, participant_id, &answer)?;
+        build_group_room_state(&db, &room, &bank, Some(participant_id), false)
+    })
+    .await
+    .context("spawn_blocking panicked")??;
+
+    Ok(Json(result))
+}
+
+async fn post_group_reveal(
+    State(state): State<Arc<AppState>>,
+    Path(code): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult<GroupRoomState> {
+    let dir = state.questions_dir.clone();
+    let db_path = state.db_path.clone();
+    let code = normalize_group_code(&code);
+    let header_token = host_token_from_headers(&headers).map(str::to_string);
+
+    let result = tokio::task::spawn_blocking(move || -> Result<GroupRoomState, ApiError> {
+        let db = Db::open_or_at(db_path.as_deref())?;
+        let room = db
+            .get_group_room(&code)?
+            .ok_or_else(|| ApiError::not_found("Group room not found"))?;
+        require_group_host(&room, header_token.as_deref())?;
+        if room.status == "ended" {
+            return Err(ApiError::bad_request("Group room has ended"));
+        }
+
+        db.update_group_room_status(&room.code, "revealed")?;
+        let room = db
+            .get_group_room(&code)?
+            .ok_or_else(|| ApiError::not_found("Group room not found"))?;
+        let bank = Bank::load(&dir, &room.cert)?;
+        build_group_room_state(&db, &room, &bank, None, true)
+    })
+    .await
+    .context("spawn_blocking panicked")??;
+
+    Ok(Json(result))
+}
+
+async fn post_group_next(
+    State(state): State<Arc<AppState>>,
+    Path(code): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult<GroupRoomState> {
+    let dir = state.questions_dir.clone();
+    let db_path = state.db_path.clone();
+    let code = normalize_group_code(&code);
+    let header_token = host_token_from_headers(&headers).map(str::to_string);
+
+    let result = tokio::task::spawn_blocking(move || -> Result<GroupRoomState, ApiError> {
+        let db = Db::open_or_at(db_path.as_deref())?;
+        let room = db
+            .get_group_room(&code)?
+            .ok_or_else(|| ApiError::not_found("Group room not found"))?;
+        require_group_host(&room, header_token.as_deref())?;
+        if room.status == "ended" {
+            return Err(ApiError::bad_request("Group room has ended"));
+        }
+
+        let card_ids: Vec<String> =
+            serde_json::from_str(&room.card_ids_json).context("deserialize group room card ids")?;
+        let next_index = room.current_index + 1;
+        let next_status = if next_index >= card_ids.len() {
+            "ended"
+        } else {
+            "voting"
+        };
+        let next_index = next_index.min(card_ids.len().saturating_sub(1));
+        db.advance_group_room(&room.code, next_index, next_status)?;
+
+        let room = db
+            .get_group_room(&code)?
+            .ok_or_else(|| ApiError::not_found("Group room not found"))?;
+        let bank = Bank::load(&dir, &room.cert)?;
+        build_group_room_state(&db, &room, &bank, None, true)
+    })
+    .await
+    .context("spawn_blocking panicked")??;
+
+    Ok(Json(result))
+}
+
+async fn post_group_end(
+    State(state): State<Arc<AppState>>,
+    Path(code): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult<GroupRoomState> {
+    let dir = state.questions_dir.clone();
+    let db_path = state.db_path.clone();
+    let code = normalize_group_code(&code);
+    let header_token = host_token_from_headers(&headers).map(str::to_string);
+
+    let result = tokio::task::spawn_blocking(move || -> Result<GroupRoomState, ApiError> {
+        let db = Db::open_or_at(db_path.as_deref())?;
+        let room = db
+            .get_group_room(&code)?
+            .ok_or_else(|| ApiError::not_found("Group room not found"))?;
+        require_group_host(&room, header_token.as_deref())?;
+        db.update_group_room_status(&room.code, "ended")?;
+
+        let room = db
+            .get_group_room(&code)?
+            .ok_or_else(|| ApiError::not_found("Group room not found"))?;
+        let bank = Bank::load(&dir, &room.cert)?;
+        build_group_room_state(&db, &room, &bank, None, true)
+    })
+    .await
+    .context("spawn_blocking panicked")??;
+
+    Ok(Json(result))
+}
+
 // ─── Server entry point ───────────────────────────────────────────────────────
 
 #[cfg(not(tarpaulin_include))]
@@ -851,7 +1303,18 @@ pub async fn run(questions_dir: PathBuf, cert: String, port: u16) -> anyhow::Res
         .route("/api/review", post(post_review))
         .route("/api/session", post(post_session))
         .route("/api/sessions", get(get_sessions))
-        .route("/api/pending-session", get(get_pending_session).post(post_pending_session).delete(delete_pending_session))
+        .route(
+            "/api/pending-session",
+            get(get_pending_session)
+                .post(post_pending_session)
+                .delete(delete_pending_session),
+        )
+        .route("/api/group-rooms", post(post_group_room))
+        .route("/api/group-rooms/{code}", get(get_group_room))
+        .route("/api/group-rooms/{code}/vote", post(post_group_vote))
+        .route("/api/group-rooms/{code}/reveal", post(post_group_reveal))
+        .route("/api/group-rooms/{code}/next", post(post_group_next))
+        .route("/api/group-rooms/{code}/end", post(post_group_end))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -908,6 +1371,10 @@ mod ts_bindings {
             BanksResponse,
             ReviewedCard,
             PendingSessionResponse,
+            GroupQuestion,
+            GroupVoteCount,
+            GroupRoomState,
+            CreateGroupRoomResponse,
         );
     }
 }
@@ -1027,7 +1494,18 @@ mod handler_tests {
             .route("/api/review", post(post_review))
             .route("/api/session", post(post_session))
             .route("/api/sessions", get(get_sessions))
-            .route("/api/pending-session", get(get_pending_session).post(post_pending_session).delete(delete_pending_session))
+            .route(
+                "/api/pending-session",
+                get(get_pending_session)
+                    .post(post_pending_session)
+                    .delete(delete_pending_session),
+            )
+            .route("/api/group-rooms", post(post_group_room))
+            .route("/api/group-rooms/{code}", get(get_group_room))
+            .route("/api/group-rooms/{code}/vote", post(post_group_vote))
+            .route("/api/group-rooms/{code}/reveal", post(post_group_reveal))
+            .route("/api/group-rooms/{code}/next", post(post_group_next))
+            .route("/api/group-rooms/{code}/end", post(post_group_end))
             .with_state(state);
 
         TestApp {
@@ -1372,9 +1850,12 @@ mod handler_tests {
             last_review: Some("2026-06-04T12:00:00".to_string()),
             reps: 1,
         };
-        db.record_review(&due_card, "q1", "test", true, 4, None).unwrap();
-        db.record_review(&due_card, "q1", "test", true, 4, None).unwrap();
-        db.record_review(&future_card, "q2", "test", false, 1, None).unwrap();
+        db.record_review(&due_card, "q1", "test", true, 4, None)
+            .unwrap();
+        db.record_review(&due_card, "q1", "test", true, 4, None)
+            .unwrap();
+        db.record_review(&future_card, "q2", "test", false, 1, None)
+            .unwrap();
         db.insert_session("test", 3, 2).unwrap();
 
         let resp = app
@@ -1416,8 +1897,10 @@ mod handler_tests {
             reps: 1,
             ..Default::default()
         };
-        db.record_review(&due_card, "q1", "test", false, 1, None).unwrap();
-        db.record_review(&future_card, "q2", "test", true, 4, None).unwrap();
+        db.record_review(&due_card, "q1", "test", false, 1, None)
+            .unwrap();
+        db.record_review(&future_card, "q2", "test", true, 4, None)
+            .unwrap();
 
         let resp = app
             .router
@@ -1541,6 +2024,211 @@ mod handler_tests {
             .unwrap()
     }
 
+    fn post_empty_with_host(uri: &str, host_token: &str) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header("x-group-host-token", host_token)
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn group_room_flow_votes_reveals_and_advances() {
+        let app = build_test_app();
+        let create_resp = app
+            .router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/group-rooms")
+                    .header("content-type", "application/json")
+                    .header("origin", "http://class.test")
+                    .body(Body::from(
+                        serde_json::json!({ "cert": "test" }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(create_resp.status(), StatusCode::OK);
+        let created = body_json(create_resp).await;
+        let code = created["code"].as_str().unwrap().to_string();
+        let host_token = created["hostToken"].as_str().unwrap().to_string();
+        assert_eq!(code.len(), 6);
+        assert_eq!(
+            created["joinUrl"],
+            format!("http://class.test/?room={code}")
+        );
+        assert_eq!(created["state"]["status"], "voting");
+        assert_eq!(created["state"]["currentIndex"], 0);
+        assert_eq!(created["state"]["totalQuestions"], 3);
+        assert!(created["state"]["currentQuestion"]["answer"].is_null());
+        assert!(created["state"]["correctAnswer"].is_null());
+
+        let current_id = created["state"]["currentQuestion"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let p1_vote = app
+            .router
+            .clone()
+            .oneshot(post_json(
+                &format!("/api/group-rooms/{code}/vote"),
+                serde_json::json!({ "participantId": "p1", "answer": "A" }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(p1_vote.status(), StatusCode::OK);
+        let p1_json = body_json(p1_vote).await;
+        assert_eq!(p1_json["selectedAnswer"], "A");
+        assert_eq!(p1_json["totalVotes"], 1);
+
+        let p2_vote = app
+            .router
+            .clone()
+            .oneshot(post_json(
+                &format!("/api/group-rooms/{code}/vote"),
+                serde_json::json!({ "participantId": "p2", "answer": "B" }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(p2_vote.status(), StatusCode::OK);
+
+        let p1_change = app
+            .router
+            .clone()
+            .oneshot(post_json(
+                &format!("/api/group-rooms/{code}/vote"),
+                serde_json::json!({ "participantId": "p1", "answer": "C" }),
+            ))
+            .await
+            .unwrap();
+        let changed = body_json(p1_change).await;
+        assert_eq!(changed["selectedAnswer"], "C");
+        assert_eq!(changed["totalVotes"], 2);
+        let counts = changed["voteCounts"].as_array().unwrap();
+        assert_eq!(
+            counts.iter().find(|c| c["answer"] == "A").unwrap()["count"],
+            0
+        );
+        assert_eq!(
+            counts.iter().find(|c| c["answer"] == "C").unwrap()["count"],
+            1
+        );
+
+        let forbidden_reveal = app
+            .router
+            .clone()
+            .oneshot(post_json(
+                &format!("/api/group-rooms/{code}/reveal"),
+                serde_json::json!({}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(forbidden_reveal.status(), StatusCode::FORBIDDEN);
+
+        let reveal = app
+            .router
+            .clone()
+            .oneshot(post_empty_with_host(
+                &format!("/api/group-rooms/{code}/reveal"),
+                &host_token,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(reveal.status(), StatusCode::OK);
+        let revealed = body_json(reveal).await;
+        assert_eq!(revealed["status"], "revealed");
+        assert!(revealed["correctAnswer"].as_str().is_some());
+        assert!(revealed["explanation"].as_str().is_some());
+
+        let late_vote = app
+            .router
+            .clone()
+            .oneshot(post_json(
+                &format!("/api/group-rooms/{code}/vote"),
+                serde_json::json!({ "participantId": "p3", "answer": "D" }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(late_vote.status(), StatusCode::BAD_REQUEST);
+
+        let public_get = app
+            .router
+            .clone()
+            .oneshot(
+                Request::get(format!("/api/group-rooms/{code}?participantId=p1"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let public_json = body_json(public_get).await;
+        assert!(public_json["correctAnswer"].as_str().is_some());
+        assert!(public_json["explanation"].is_null());
+        assert_eq!(public_json["selectedAnswer"], "C");
+
+        let host_get = app
+            .router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/group-rooms/{code}"))
+                    .header("x-group-host-token", &host_token)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let host_json = body_json(host_get).await;
+        assert!(host_json["explanation"].as_str().is_some());
+
+        let next = app
+            .router
+            .clone()
+            .oneshot(post_empty_with_host(
+                &format!("/api/group-rooms/{code}/next"),
+                &host_token,
+            ))
+            .await
+            .unwrap();
+        let next_json = body_json(next).await;
+        assert_eq!(next_json["status"], "voting");
+        assert_eq!(next_json["currentIndex"], 1);
+        assert_ne!(next_json["currentQuestion"]["id"], current_id);
+        assert_eq!(next_json["totalVotes"], 0);
+
+        let end = app
+            .router
+            .clone()
+            .oneshot(post_empty_with_host(
+                &format!("/api/group-rooms/{code}/end"),
+                &host_token,
+            ))
+            .await
+            .unwrap();
+        let ended = body_json(end).await;
+        assert_eq!(ended["status"], "ended");
+    }
+
+    #[tokio::test]
+    async fn get_group_room_rejects_unknown_code() {
+        let app = build_test_app();
+        let resp = app
+            .router
+            .oneshot(
+                Request::get("/api/group-rooms/NOPE99")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
     #[tokio::test]
     async fn get_certs_returns_empty_when_questions_dir_missing() {
         let app = build_test_app_missing_questions_dir();
@@ -1658,7 +2346,12 @@ mod handler_tests {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
         let json = body_json(resp).await;
-        assert!(json["error"].as_str().unwrap().contains("is not in options"));
+        assert!(
+            json["error"]
+                .as_str()
+                .unwrap()
+                .contains("is not in options")
+        );
     }
 
     #[tokio::test]

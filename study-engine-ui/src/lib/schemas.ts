@@ -24,6 +24,10 @@ import type { BanksResponse } from './generated/BanksResponse'
 import type { ReviewedCard } from './generated/ReviewedCard'
 import type { PendingSessionResponse } from './generated/PendingSessionResponse'
 import type { GlossaryEntry } from './generated/GlossaryEntry'
+import type { GroupQuestion } from './generated/GroupQuestion'
+import type { GroupVoteCount } from './generated/GroupVoteCount'
+import type { GroupRoomState } from './generated/GroupRoomState'
+import type { CreateGroupRoomResponse } from './generated/CreateGroupRoomResponse'
 
 export const questionSchema = z.object({
   id: z.string(),
@@ -148,3 +152,37 @@ export const pendingSessionResponseSchema = z.object({
   controlDomain: z.number().nullable(),
   reviewedCards: z.array(reviewedCardSchema)
 }) satisfies z.ZodType<PendingSessionResponse>
+
+export const groupQuestionSchema = z.object({
+  id: z.string(),
+  domain: z.number(),
+  scenario: z.string(),
+  question: z.string(),
+  options: z.record(z.string(), z.string())
+}) satisfies z.ZodType<GroupQuestion>
+
+export const groupVoteCountSchema = z.object({
+  answer: z.string(),
+  count: z.number()
+}) satisfies z.ZodType<GroupVoteCount>
+
+export const groupRoomStateSchema = z.object({
+  code: z.string(),
+  cert: z.string(),
+  status: z.string(),
+  currentIndex: z.number(),
+  totalQuestions: z.number(),
+  currentQuestion: groupQuestionSchema.nullable(),
+  voteCounts: z.array(groupVoteCountSchema),
+  totalVotes: z.number(),
+  selectedAnswer: z.string().nullable(),
+  correctAnswer: z.string().nullable(),
+  explanation: z.string().nullable()
+}) satisfies z.ZodType<GroupRoomState>
+
+export const createGroupRoomResponseSchema = z.object({
+  code: z.string(),
+  hostToken: z.string(),
+  joinUrl: z.string(),
+  state: groupRoomStateSchema
+}) satisfies z.ZodType<CreateGroupRoomResponse>

@@ -505,8 +505,11 @@ p  { color: var(--fg); }
   border-radius: 3px;
   overflow: hidden;
 }
-.seg-toggle button {
-  background: none;
+.seg-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
   border: none;
   color: var(--dim);
   font-family: var(--font);
@@ -515,10 +518,123 @@ p  { color: var(--fg); }
   cursor: pointer;
   letter-spacing: 0.04em;
   transition: all 0.15s;
+  outline: none;
+  user-select: none;
 }
-.seg-toggle button + button { border-left: 1px solid var(--border); }
-.seg-toggle button:hover { color: var(--fg); }
-.seg-toggle button.active { background: var(--mid); color: var(--bg); }
+.seg-control + .seg-control { border-left: 1px solid var(--border); }
+.seg-control:hover,
+.seg-control:focus-visible { color: var(--fg); }
+.seg-control.seg-active { background-color: var(--mid); color: var(--bg); }
+
+.group-start-row,
+.group-room-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.group-start-title {
+  color: var(--bright);
+  font-weight: 700;
+  font-size: 14px;
+}
+.group-muted {
+  color: var(--dim);
+  font-size: 11px;
+}
+.room-code {
+  color: var(--bright);
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1;
+}
+.join-link-wrap {
+  flex: 1;
+  min-width: min(100%, 280px);
+}
+.join-link-label {
+  display: block;
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.join-link-row {
+  display: flex;
+  gap: 8px;
+}
+.join-link-input {
+  width: 100%;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 3px;
+}
+.vote-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+.vote-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, 220px) 32px;
+  gap: 10px;
+  align-items: center;
+}
+.vote-answer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 12px;
+}
+.vote-answer > span:last-child {
+  overflow-wrap: anywhere;
+}
+.vote-track {
+  height: 10px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.vote-fill {
+  height: 100%;
+  background: var(--mid);
+  transition: width 0.18s ease;
+}
+.vote-count {
+  color: var(--bright);
+  font-weight: 700;
+  text-align: right;
+}
+.selected-vote {
+  border-color: var(--bright);
+  background: var(--muted);
+}
+.student-room {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+@media (max-width: 620px) {
+  .room-code { font-size: 26px; }
+  .join-link-row { flex-direction: column; }
+  .vote-row {
+    grid-template-columns: 1fr 32px;
+  }
+  .vote-track {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+}
 
 /* Clickable domain rows on the Dashboard (perception → action: see a weak
    area, click straight into studying it). */

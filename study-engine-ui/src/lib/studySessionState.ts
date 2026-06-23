@@ -26,6 +26,7 @@ export interface StudyFetchParams {
 export function studyFetchOptions(params: StudyFetchParams): FetchDueOptions {
   const { cert, mode, domain, tag, questionIds } = params
   if (mode === 'all') return { cert, all: true }
+  if (mode === 'group') return { cert, all: true }
   if (mode === 'custom' && questionIds) return { cert, ids: questionIds, maxNew: 999 }
   return { cert, domain, tag, maxNew: 5 }
 }

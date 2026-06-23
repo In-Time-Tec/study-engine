@@ -5,7 +5,7 @@ import Browse from './Browse.svelte'
 import Dashboard from './Dashboard.svelte'
 import History from './History.svelte'
 import StudySession from './StudySession.svelte'
-import type { Stats, DueResponse, QuestionsResponse, SessionsResponse, WrappedCard, Question } from './types'
+import type { Stats, DueResponse, GroupRoomState, QuestionsResponse, SessionsResponse, WrappedCard, Question } from './types'
 
 const api = vi.hoisted(() => ({
   fetchCerts: vi.fn(),
@@ -20,7 +20,13 @@ const api = vi.hoisted(() => ({
   deleteBank: vi.fn(),
   savePendingSession: vi.fn(),
   loadPendingSession: vi.fn(),
-  clearPendingSession: vi.fn()
+  clearPendingSession: vi.fn(),
+  createGroupRoom: vi.fn(),
+  fetchGroupRoom: vi.fn(),
+  voteGroupRoom: vi.fn(),
+  revealGroupRoom: vi.fn(),
+  nextGroupRoom: vi.fn(),
+  endGroupRoom: vi.fn()
 }))
 
 vi.mock('./api', () => api)
@@ -162,10 +168,44 @@ const masteredCard: WrappedCard = {
   cardState: { due: '2999-01-01', reps: 3 }
 }
 
+const groupStateVoting: GroupRoomState = {
+  code: 'ABC234',
+  cert: 'cca-f',
+  status: 'voting',
+  currentIndex: 0,
+  totalQuestions: 2,
+  currentQuestion: {
+    id: 'q1',
+    domain: 1,
+    scenario: 'Coordinator handoff',
+    question: 'What should the group choose?',
+    options: { A: 'Guess', B: 'Route explicitly', C: 'Skip', D: 'Restart' }
+  },
+  voteCounts: [
+    { answer: 'A', count: 0 },
+    { answer: 'B', count: 1 },
+    { answer: 'C', count: 0 },
+    { answer: 'D', count: 0 }
+  ],
+  totalVotes: 1,
+  selectedAnswer: null,
+  correctAnswer: null,
+  explanation: null
+}
+
+const groupStateRevealed: GroupRoomState = {
+  ...groupStateVoting,
+  status: 'revealed',
+  correctAnswer: 'B',
+  explanation: 'Explicit routing keeps the workflow inspectable.'
+}
+
 function resetApi(): void {
   for (const fn of Object.values(api)) {
     fn.mockReset()
   }
+  window.history.replaceState(null, '', '/')
+  localStorage.clear()
   api.fetchCerts.mockResolvedValue(['cca-f'])
   api.postReview.mockResolvedValue({})
   api.postSession.mockResolvedValue({})
@@ -173,6 +213,17 @@ function resetApi(): void {
   api.loadPendingSession.mockResolvedValue(null)
   api.savePendingSession.mockResolvedValue(undefined)
   api.clearPendingSession.mockResolvedValue(undefined)
+  api.createGroupRoom.mockResolvedValue({
+    code: 'ABC234',
+    hostToken: 'secret',
+    joinUrl: 'http://localhost/?room=ABC234',
+    state: groupStateVoting
+  })
+  api.fetchGroupRoom.mockResolvedValue(groupStateVoting)
+  api.voteGroupRoom.mockResolvedValue({ ...groupStateVoting, selectedAnswer: 'B' })
+  api.revealGroupRoom.mockResolvedValue(groupStateRevealed)
+  api.nextGroupRoom.mockResolvedValue({ ...groupStateVoting, currentIndex: 1, totalVotes: 0 })
+  api.endGroupRoom.mockResolvedValue({ ...groupStateVoting, status: 'ended', currentQuestion: null })
 }
 
 describe('Dashboard', () => {
@@ -360,6 +411,27 @@ describe('StudySession', () => {
     render(StudySession, { props: { domain: 2, tag: 'tools' } })
     await screen.findAllByText('Nothing due today.')
     expect(api.fetchDue).toHaveBeenLastCalledWith({ cert: 'cca-f', domain: 2, tag: 'tools', maxNew: 5 })
+  })
+
+  test('starts and reveals a group room without writing study progress', async () => {
+    api.fetchDue.mockResolvedValue({ cards: [], dueCount: 0, newCount: 0 } satisfies DueResponse)
+    render(StudySession)
+    await screen.findByText('Nothing due today.')
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Group' }))
+    expect(screen.getByRole('button', { name: 'Start Room' })).toBeInTheDocument()
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Start Room' }))
+    expect(await screen.findByText('ABC234')).toBeInTheDocument()
+    expect(screen.getByText('What should the group choose?')).toBeInTheDocument()
+    expect(api.createGroupRoom).toHaveBeenCalledWith('cca-f')
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Reveal' }))
+    expect(await screen.findByText('Correct answer: B')).toBeInTheDocument()
+    expect(screen.getByText('Explicit routing keeps the workflow inspectable.')).toBeInTheDocument()
+    expect(api.revealGroupRoom).toHaveBeenCalledWith('ABC234', 'secret')
+    expect(api.postReview).not.toHaveBeenCalled()
+    expect(api.postSession).not.toHaveBeenCalled()
   })
 
   test('completes a non-due session with a good rating and no study-again action', async () => {
@@ -653,5 +725,24 @@ describe('App', () => {
 
     await fireEvent.change(bankSelect, { target: { value: 'aws-saa' } })
     await waitFor(() => expect(bankSelect.value).toBe('aws-saa'))
+  })
+
+  test('renders a student group room from the room query and records a vote', async () => {
+    window.history.replaceState(null, '', '/?room=ABC234')
+    localStorage.setItem('study-engine-group-participant-id', 'student-1')
+    api.fetchGroupRoom.mockResolvedValue(groupStateVoting)
+    api.voteGroupRoom.mockResolvedValue({ ...groupStateVoting, selectedAnswer: 'B' })
+
+    render(App)
+    expect(await screen.findByText('What should the group choose?')).toBeInTheDocument()
+    expect(screen.queryByText('Dashboard')).not.toBeInTheDocument()
+
+    await fireEvent.click(screen.getByRole('button', { name: /B Route explicitly/ }))
+    await waitFor(() => expect(api.voteGroupRoom).toHaveBeenCalledWith({
+      code: 'ABC234',
+      participantId: 'student-1',
+      answer: 'B'
+    }))
+    expect(await screen.findByText('Vote recorded: B')).toBeInTheDocument()
   })
 })

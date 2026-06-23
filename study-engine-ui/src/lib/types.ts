@@ -19,6 +19,10 @@ export type { BankInfo } from './generated/BankInfo'
 export type { BanksResponse } from './generated/BanksResponse'
 export type { ReviewedCard } from './generated/ReviewedCard'
 export type { PendingSessionResponse } from './generated/PendingSessionResponse'
+export type { GroupQuestion } from './generated/GroupQuestion'
+export type { GroupVoteCount } from './generated/GroupVoteCount'
+export type { GroupRoomState } from './generated/GroupRoomState'
+export type { CreateGroupRoomResponse } from './generated/CreateGroupRoomResponse'
 
 // A study card is the backend's question+state pair. The bare-`Question` arm of
 // the union is retained for callers that build plain cards; `isWrappedCard`
@@ -36,7 +40,7 @@ export interface QuestionOptions {
   D?: string
 }
 
-export type StudyMode = 'due' | 'all' | 'custom'
+export type StudyMode = 'due' | 'all' | 'group' | 'custom'
 export type StudyPhase = 'loading' | 'question' | 'revealed' | 'summary' | 'empty' | 'error'
 
 export interface FetchDueOptions {

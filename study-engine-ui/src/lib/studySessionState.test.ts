@@ -136,6 +136,10 @@ describe('studyFetchOptions', () => {
     expect(studyFetchOptions({ ...base, mode: 'all' })).toEqual({ cert: 'cca-f', all: true })
   })
 
+  test('group mode uses the all-card pool', () => {
+    expect(studyFetchOptions({ ...base, mode: 'group' })).toEqual({ cert: 'cca-f', all: true })
+  })
+
   test('custom mode with ids requests exactly those cards', () => {
     expect(studyFetchOptions({ ...base, mode: 'custom', questionIds: ['q1', 'q2'] }))
       .toEqual({ cert: 'cca-f', ids: ['q1', 'q2'], maxNew: 999 })

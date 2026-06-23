@@ -3,7 +3,7 @@ const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
-  'access-control-allow-headers': 'content-type'
+  'access-control-allow-headers': 'content-type, x-group-host-token'
 }
 
 const SCHEMA = [
@@ -57,8 +57,27 @@ const SCHEMA = [
     name TEXT NOT NULL,
     PRIMARY KEY (user_key, name)
   )`,
+  `CREATE TABLE IF NOT EXISTS group_rooms (
+    code TEXT PRIMARY KEY,
+    host_token TEXT NOT NULL,
+    host_user_key TEXT NOT NULL,
+    cert TEXT NOT NULL,
+    card_ids TEXT NOT NULL,
+    current_index INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS group_votes (
+    code TEXT NOT NULL,
+    card_id TEXT NOT NULL,
+    participant_id TEXT NOT NULL,
+    selected_answer TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (code, card_id, participant_id)
+  )`,
   'CREATE INDEX IF NOT EXISTS reviews_user_cert_ts_idx ON reviews (user_key, cert, ts)',
-  'CREATE INDEX IF NOT EXISTS sessions_user_cert_id_idx ON sessions (user_key, cert, id)'
+  'CREATE INDEX IF NOT EXISTS sessions_user_cert_id_idx ON sessions (user_key, cert, id)',
+  'CREATE INDEX IF NOT EXISTS group_votes_room_card_idx ON group_votes (code, card_id)'
 ]
 
 let schemaReady
@@ -164,6 +183,21 @@ async function routeApi(request, env, url) {
 
   if (path === '/api/pending-session' && request.method === 'DELETE') {
     return deletePendingSession(env.DB, user, url)
+  }
+
+  if (path === '/api/group-rooms' && request.method === 'POST') {
+    return createGroupRoom(request, env, user)
+  }
+
+  const groupMatch = path.match(/^\/api\/group-rooms\/([^/]+)(?:\/([^/]+))?$/)
+  if (groupMatch) {
+    const code = normalizeGroupCode(decodeURIComponent(groupMatch[1]))
+    const action = groupMatch[2] || ''
+    if (!action && request.method === 'GET') return getGroupRoom(request, env, user, url, code)
+    if (action === 'vote' && request.method === 'POST') return voteGroupRoom(request, env, code)
+    if (action === 'reveal' && request.method === 'POST') return revealGroupRoom(request, env, code)
+    if (action === 'next' && request.method === 'POST') return nextGroupRoom(request, env, code)
+    if (action === 'end' && request.method === 'POST') return endGroupRoom(request, env, code)
   }
 
   throw new ApiError(404, 'Not found')
@@ -400,6 +434,129 @@ async function deletePendingSession(db, user, url) {
     .bind(user, certParam(url))
     .run()
   return json({ ok: true })
+}
+
+async function createGroupRoom(request, env, user) {
+  const body = await jsonBody(request)
+  const cert = body.cert || 'cca-f'
+  const bank = await loadBank(env, request, user, cert)
+  if (bank.questions.length === 0) throw new ApiError(400, 'Question bank has no questions')
+
+  await cleanupOldGroupRooms(env.DB)
+  const cardIds = shuffle(bank.questions.map((question) => question.id))
+  const hostToken = randomToken(32)
+  const createdAt = isoTimestamp()
+
+  let code = null
+  for (let i = 0; i < 20; i += 1) {
+    const candidate = randomCode()
+    if (await getGroupRoomRecord(env.DB, candidate)) continue
+    await env.DB
+      .prepare(
+        `INSERT INTO group_rooms
+         (code, host_token, host_user_key, cert, card_ids, current_index, status, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, 'voting', ?6)`
+      )
+      .bind(candidate, hostToken, user, cert, JSON.stringify(cardIds), createdAt)
+      .run()
+    code = candidate
+    break
+  }
+  if (!code) throw new ApiError(400, 'Could not allocate a group room code')
+
+  const room = await getGroupRoomRecord(env.DB, code)
+  const state = await buildGroupRoomState(env.DB, room, bank, null, true)
+  return json({
+    code,
+    hostToken,
+    joinUrl: new URL(`/?room=${code}`, request.url).toString(),
+    state
+  })
+}
+
+async function getGroupRoom(request, env, user, url, code) {
+  const room = await getGroupRoomRecord(env.DB, code)
+  if (!room) throw new ApiError(404, 'Group room not found')
+  const bank = await loadBank(env, request, room.host_user_key || user, room.cert)
+  const includeHostFields = request.headers.get('x-group-host-token') === room.host_token
+  return json(await buildGroupRoomState(
+    env.DB,
+    room,
+    bank,
+    url.searchParams.get('participantId'),
+    includeHostFields
+  ))
+}
+
+async function voteGroupRoom(request, env, code) {
+  const body = await jsonBody(request)
+  const participantId = String(body.participantId ?? '').trim()
+  if (!participantId) throw new ApiError(400, 'participantId is required')
+
+  const room = await getGroupRoomRecord(env.DB, code)
+  if (!room) throw new ApiError(404, 'Group room not found')
+  if (room.status !== 'voting') throw new ApiError(400, 'Voting is closed for this question')
+
+  const bank = await loadBank(env, request, room.host_user_key, room.cert)
+  const cardIds = JSON.parse(room.card_ids)
+  const cardId = cardIds[Number(room.current_index)]
+  const question = bank.questions.find((q) => q.id === cardId)
+  if (!question) throw new ApiError(400, 'Current group question is unavailable')
+
+  const answer = validateGroupAnswer(body.answer, question)
+  await env.DB
+    .prepare(
+      `INSERT OR REPLACE INTO group_votes
+       (code, card_id, participant_id, selected_answer, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?5)`
+    )
+    .bind(room.code, cardId, participantId, answer, isoTimestamp())
+    .run()
+
+  return json(await buildGroupRoomState(env.DB, room, bank, participantId, false))
+}
+
+async function revealGroupRoom(request, env, code) {
+  const room = await getGroupRoomRecord(env.DB, code)
+  if (!room) throw new ApiError(404, 'Group room not found')
+  requireGroupHost(request, room)
+  if (room.status === 'ended') throw new ApiError(400, 'Group room has ended')
+
+  await env.DB.prepare('UPDATE group_rooms SET status = ?2 WHERE code = ?1').bind(code, 'revealed').run()
+  const updated = await getGroupRoomRecord(env.DB, code)
+  const bank = await loadBank(env, request, updated.host_user_key, updated.cert)
+  return json(await buildGroupRoomState(env.DB, updated, bank, null, true))
+}
+
+async function nextGroupRoom(request, env, code) {
+  const room = await getGroupRoomRecord(env.DB, code)
+  if (!room) throw new ApiError(404, 'Group room not found')
+  requireGroupHost(request, room)
+  if (room.status === 'ended') throw new ApiError(400, 'Group room has ended')
+
+  const cardIds = JSON.parse(room.card_ids)
+  const proposedIndex = Number(room.current_index) + 1
+  const status = proposedIndex >= cardIds.length ? 'ended' : 'voting'
+  const nextIndex = Math.min(proposedIndex, Math.max(cardIds.length - 1, 0))
+  await env.DB
+    .prepare('UPDATE group_rooms SET current_index = ?2, status = ?3 WHERE code = ?1')
+    .bind(code, nextIndex, status)
+    .run()
+
+  const updated = await getGroupRoomRecord(env.DB, code)
+  const bank = await loadBank(env, request, updated.host_user_key, updated.cert)
+  return json(await buildGroupRoomState(env.DB, updated, bank, null, true))
+}
+
+async function endGroupRoom(request, env, code) {
+  const room = await getGroupRoomRecord(env.DB, code)
+  if (!room) throw new ApiError(404, 'Group room not found')
+  requireGroupHost(request, room)
+
+  await env.DB.prepare('UPDATE group_rooms SET status = ?2 WHERE code = ?1').bind(code, 'ended').run()
+  const updated = await getGroupRoomRecord(env.DB, code)
+  const bank = await loadBank(env, request, updated.host_user_key, updated.cert)
+  return json(await buildGroupRoomState(env.DB, updated, bank, null, true))
 }
 
 async function uploadBank(request, env, user) {
@@ -851,6 +1008,126 @@ async function jsonBody(request) {
 async function all(statement) {
   const result = await statement.all()
   return result.results || []
+}
+
+async function cleanupOldGroupRooms(db) {
+  const cutoff = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, '')
+  await db.batch([
+    db.prepare(
+      `DELETE FROM group_votes WHERE code IN (
+         SELECT code FROM group_rooms WHERE created_at < ?1
+       )`
+    ).bind(cutoff),
+    db.prepare('DELETE FROM group_rooms WHERE created_at < ?1').bind(cutoff)
+  ])
+}
+
+async function getGroupRoomRecord(db, code) {
+  return db
+    .prepare(
+      `SELECT code, host_token, host_user_key, cert, card_ids, current_index, status, created_at
+       FROM group_rooms WHERE code = ?1`
+    )
+    .bind(code)
+    .first()
+}
+
+async function buildGroupRoomState(db, room, bank, participantId, includeHostFields) {
+  const cardIds = JSON.parse(room.card_ids)
+  const currentQuestion = room.status === 'ended'
+    ? null
+    : bank.questions.find((question) => question.id === cardIds[Number(room.current_index)]) || null
+
+  const rawCounts = currentQuestion
+    ? await all(
+      db
+        .prepare(
+          `SELECT selected_answer, COUNT(*) AS count
+           FROM group_votes
+           WHERE code = ?1 AND card_id = ?2
+           GROUP BY selected_answer`
+        )
+        .bind(room.code, currentQuestion.id)
+    )
+    : []
+  const countMap = new Map(rawCounts.map((row) => [row.selected_answer, Number(row.count)]))
+  const answers = currentQuestion ? Object.keys(currentQuestion.options).sort() : []
+  let totalVotes = 0
+  const voteCounts = answers.map((answer) => {
+    const count = countMap.get(answer) || 0
+    totalVotes += count
+    return { answer, count }
+  })
+
+  let selectedAnswer = null
+  if (currentQuestion && String(participantId ?? '').trim()) {
+    const row = await db
+      .prepare(
+        `SELECT selected_answer
+         FROM group_votes
+         WHERE code = ?1 AND card_id = ?2 AND participant_id = ?3`
+      )
+      .bind(room.code, currentQuestion.id, String(participantId).trim())
+      .first()
+    selectedAnswer = row?.selected_answer || null
+  }
+
+  const revealed = room.status === 'revealed'
+  return {
+    code: room.code,
+    cert: room.cert,
+    status: room.status,
+    currentIndex: Number(room.current_index),
+    totalQuestions: cardIds.length,
+    currentQuestion: currentQuestion ? publicGroupQuestion(currentQuestion) : null,
+    voteCounts,
+    totalVotes,
+    selectedAnswer,
+    correctAnswer: currentQuestion && revealed ? currentQuestion.answer : null,
+    explanation: currentQuestion && revealed && includeHostFields ? currentQuestion.explanation : null
+  }
+}
+
+function publicGroupQuestion(question) {
+  return {
+    id: question.id,
+    domain: question.domain,
+    scenario: question.scenario,
+    question: question.question,
+    options: question.options
+  }
+}
+
+function validateGroupAnswer(answer, question) {
+  const normalized = String(answer ?? '').trim().toUpperCase()
+  if (normalized.length !== 1 || !Object.prototype.hasOwnProperty.call(question.options, normalized)) {
+    throw new ApiError(400, 'Answer is not valid for this question')
+  }
+  return normalized
+}
+
+function requireGroupHost(request, room) {
+  if (request.headers.get('x-group-host-token') !== room.host_token) {
+    throw new ApiError(403, 'Invalid group host token')
+  }
+}
+
+function normalizeGroupCode(code) {
+  return String(code || '').trim().toUpperCase()
+}
+
+function randomCode() {
+  return randomString('23456789ABCDEFGHJKLMNPQRSTUVWXYZ', 6)
+}
+
+function randomToken(length) {
+  return randomString('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', length)
+}
+
+function randomString(alphabet, length) {
+  const values = new Uint32Array(length)
+  crypto.getRandomValues(values)
+  return [...values].map((value) => alphabet[value % alphabet.length]).join('')
 }
 
 function certParam(url) {

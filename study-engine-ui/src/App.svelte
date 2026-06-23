@@ -3,6 +3,7 @@
   import Dashboard from './lib/Dashboard.svelte'
   import StudySession from './lib/StudySession.svelte'
   import Browse from './lib/Browse.svelte'
+  import GroupStudent from './lib/GroupStudent.svelte'
   import History from './lib/History.svelte'
   import Settings from './lib/Settings.svelte'
   import { fetchCerts, fetchStats } from './lib/api'
@@ -11,6 +12,7 @@
   import type { Stats } from './lib/types'
 
   let tab: string = $state('dashboard')
+  let roomCode: string | null = $state(null)
   let studyMode: string = $state('due')
   let studyDomain: number | null = $state(null)
   let quizIds: string[] | null = $state(null)
@@ -28,6 +30,7 @@
   )
 
   onMount(async () => {
+    roomCode = new URLSearchParams(window.location.search).get('room')
     try {
       applyCerts(await fetchCerts())
     } catch {
@@ -95,6 +98,13 @@
     tab = 'study'
   }
 
+  function leaveRoom(): void {
+    roomCode = null
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', window.location.pathname)
+    }
+  }
+
   async function refreshHeaderStats(selectedCert: string): Promise<void> {
     const request = ++statsRequest
     if (!selectedCert) {
@@ -122,27 +132,32 @@
 
 <div class="header">
   <div class="header-brand">STUDY ENGINE</div>
-  <nav class="nav">
-    {#each tabs as t}
-      <button
-        class="nav-btn {tab === t.id ? 'active' : ''}"
-        onclick={() => { if (t.id === 'study') { if (tab !== 'study') startDefaultStudy() } else { tab = t.id } }}
-      >
-        {t.label}
-      </button>
-    {/each}
-  </nav>
-  <div
-    class="session-due"
-    title={headerStatsError ? `Next session unavailable: ${headerStatsError}` : 'Next session due'}
-  >
-    <span class="session-due-label">Next session</span>
-    <span class="session-due-value">{nextSessionText}</span>
-  </div>
+  {#if !roomCode}
+    <nav class="nav">
+      {#each tabs as t}
+        <button
+          class="nav-btn {tab === t.id ? 'active' : ''}"
+          onclick={() => { if (t.id === 'study') { if (tab !== 'study') startDefaultStudy() } else { tab = t.id } }}
+        >
+          {t.label}
+        </button>
+      {/each}
+    </nav>
+    <div
+      class="session-due"
+      title={headerStatsError ? `Next session unavailable: ${headerStatsError}` : 'Next session due'}
+    >
+      <span class="session-due-label">Next session</span>
+      <span class="session-due-value">{nextSessionText}</span>
+    </div>
+  {/if}
 </div>
 
 <div class="content">
-  {#if certsLoading}
+  {#if roomCode}
+    <GroupStudent code={roomCode} onleave={leaveRoom} />
+
+  {:else if certsLoading}
     <div class="loading">loading…</div>
 
   {:else if tab === 'settings'}
