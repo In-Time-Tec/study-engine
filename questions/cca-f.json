@@ -769,15 +769,15 @@
       "id": "d3-001",
       "domain": 3,
       "scenario": "",
-      "question": "A new team member is not receiving the project's Claude Code conventions that all other developers follow. Where are those conventions most likely stored?",
+      "question": "A new team member is not receiving the project's Claude Code conventions that all other developers follow after cloning the repo. What is the most likely issue?",
       "options": {
-        "A": "In a project-level `CLAUDE.md` that is version-controlled and shared via the repo",
-        "B": "In `.claude/settings.json`, which distributes shared conventions to every checkout automatically",
-        "C": "In `~/.claude/CLAUDE.md`, which the team copies to each developer's machine during onboarding",
-        "D": "In `.claude/rules/` files gated by an `onboarding: true` frontmatter flag the new member lacks"
+        "A": "The conventions live in a local or user-level memory file, such as `CLAUDE.local.md` or `~/.claude/CLAUDE.md`, instead of a version-controlled project `CLAUDE.md`",
+        "B": "The conventions live in `.claude/settings.json`, which Claude Code ignores until each developer runs `/init`",
+        "C": "The conventions live in a project-level `CLAUDE.md`, but Claude Code only loads it after the first successful commit",
+        "D": "The conventions live in `.claude/rules/` files gated by an `onboarding: true` frontmatter flag the new member lacks"
       },
       "answer": "A",
-      "explanation": "Project-level CLAUDE.md (`.claude/CLAUDE.md` or root `CLAUDE.md`) is version-controlled and shared with all team members. User-level `~/.claude/CLAUDE.md` applies only to that user and is not shared.",
+      "explanation": "If a new teammate does not receive the conventions after cloning the repo, the conventions are probably stored in a personal or local memory file such as `~/.claude/CLAUDE.md` or `CLAUDE.local.md`. Shared project conventions should live in a version-controlled project `CLAUDE.md`, either at the repo root or under `.claude/CLAUDE.md`.",
       "tags": [
         "CLAUDE.md",
         "hierarchy",
