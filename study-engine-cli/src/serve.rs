@@ -3,7 +3,8 @@ use axum::{
     Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Json},
+    middleware,
+    response::{IntoResponse, Json, Response},
     routing::{delete, get, post},
 };
 use chrono::{Duration, Local};
@@ -13,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
+use tower_http::services::{ServeDir, ServeFile};
 use ts_rs::TS;
 
 use crate::db::{CardState, Db, GroupRoomRecord};
@@ -93,6 +95,68 @@ impl<E: Into<anyhow::Error>> From<E> for ApiError {
 }
 
 type ApiResult<T> = Result<Json<T>, ApiError>;
+
+// ─── User key + access code helpers ──────────────────────────────────────────
+
+fn extract_user_key(headers: &HeaderMap) -> String {
+    headers
+        .get("X-User")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "anonymous".to_string())
+}
+
+async fn access_code_middleware(
+    headers: HeaderMap,
+    request: axum::extract::Request,
+    next: middleware::Next,
+) -> Response {
+    if let Ok(required) = std::env::var("STUDY_ACCESS_CODE") {
+        let provided = headers
+            .get("X-Access-Code")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        if provided != required {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({ "error": "invalid access code" })),
+            )
+                .into_response();
+        }
+    }
+    next.run(request).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConfigResponse {
+    requires_code: bool,
+}
+
+#[derive(Deserialize)]
+struct VerifyCodeBody {
+    code: String,
+}
+
+async fn get_config() -> Json<ConfigResponse> {
+    Json(ConfigResponse {
+        requires_code: std::env::var("STUDY_ACCESS_CODE").is_ok(),
+    })
+}
+
+async fn post_verify_code(
+    Json(body): Json<VerifyCodeBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    match std::env::var("STUDY_ACCESS_CODE") {
+        Ok(required) if body.code == required => Ok(Json(serde_json::json!({ "ok": true }))),
+        Ok(_) => Err(ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            error: anyhow::anyhow!("invalid access code"),
+        }),
+        Err(_) => Ok(Json(serde_json::json!({ "ok": true }))),
+    }
+}
 
 // ─── Query / body types ───────────────────────────────────────────────────────
 
@@ -565,21 +629,23 @@ fn validate_review_rating(is_correct: bool, rating: u32) -> Result<(), ApiError>
 async fn get_stats(
     State(state): State<Arc<AppState>>,
     Query(params): Query<CertParam>,
+    headers: HeaderMap,
 ) -> ApiResult<StatsResponse> {
     let dir = state.questions_dir.clone();
     let cert = state.cert_or_default(params.cert);
     let db_path = state.db_path.clone();
+    let user_key = extract_user_key(&headers);
 
-    tracing::debug!(%cert, "get_stats");
+    tracing::debug!(%cert, %user_key, "get_stats");
 
     let result = tokio::task::spawn_blocking(move || -> anyhow::Result<StatsResponse> {
         let db = Db::open_or_at(db_path.as_deref())?;
         let bank = Bank::load(&dir, &cert)?;
         let today = Local::now().format("%Y-%m-%d").to_string();
 
-        let cards = db.all_cards(&cert)?;
-        let reviews = db.all_reviews(&cert)?;
-        let recent_sessions = db.recent_sessions(&cert, 5)?;
+        let cards = db.all_cards(&user_key, &cert)?;
+        let reviews = db.all_reviews(&user_key, &cert)?;
+        let recent_sessions = db.recent_sessions(&user_key, &cert, 5)?;
         let questions: Vec<&Question> = bank.questions.iter().collect();
         let summary = summarize_progress(
             &bank,
@@ -643,11 +709,13 @@ async fn get_stats(
 async fn get_due(
     State(state): State<Arc<AppState>>,
     Query(params): Query<DueParams>,
+    headers: HeaderMap,
 ) -> ApiResult<DueResponse> {
     let dir = state.questions_dir.clone();
     let cert = state.cert_or_default(params.cert);
     let max_new = params.max_new.unwrap_or(5);
     let db_path = state.db_path.clone();
+    let user_key = extract_user_key(&headers);
 
     tracing::debug!(%cert, max_new, "get_due");
 
@@ -656,7 +724,7 @@ async fn get_due(
         let bank = Bank::load(&dir, &cert)?;
         let today = Local::now().format("%Y-%m-%d").to_string();
 
-        let cards = db.all_cards(&cert)?;
+        let cards = db.all_cards(&user_key, &cert)?;
         let card_map = card_map_from(&cards);
 
         // Quiz-all mode: return every matching question, shuffled
@@ -723,16 +791,18 @@ async fn get_due(
 async fn get_questions(
     State(state): State<Arc<AppState>>,
     Query(params): Query<QuestionsParams>,
+    headers: HeaderMap,
 ) -> ApiResult<QuestionsResponse> {
     let dir = state.questions_dir.clone();
     let cert = state.cert_or_default(params.cert);
     let db_path = state.db_path.clone();
+    let user_key = extract_user_key(&headers);
 
     let result = tokio::task::spawn_blocking(move || -> anyhow::Result<QuestionsResponse> {
         let db = Db::open_or_at(db_path.as_deref())?;
         let bank = Bank::load(&dir, &cert)?;
 
-        let cards = db.all_cards(&cert)?;
+        let cards = db.all_cards(&user_key, &cert)?;
         let card_map = card_map_from(&cards);
 
         let mut filtered = bank.filter(params.domain, params.tag.as_deref());
@@ -765,12 +835,14 @@ async fn get_questions(
 
 async fn post_review(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(body): Json<ReviewBody>,
 ) -> ApiResult<serde_json::Value> {
     validate_review_rating(body.is_correct, body.rating)?;
     let cert = state.cert_or_default(body.cert);
     let dir = state.questions_dir.clone();
     let db_path = state.db_path.clone();
+    let user_key = extract_user_key(&headers);
 
     tracing::debug!(card_id = %body.card_id, rating = body.rating, is_correct = body.is_correct, "post_review");
 
@@ -783,7 +855,7 @@ async fn post_review(
             )));
         }
         let db = Db::open_or_at(db_path.as_deref())?;
-        let card = db.get_card(&cert, &body.card_id)?;
+        let card = db.get_card(&user_key, &cert, &body.card_id)?;
         let fsrs = FSRS::new(&[]).context("FSRS init")?;
         let today = Local::now().date_naive();
         let (stability, difficulty, due) = fsrs_next(&card, &fsrs, body.rating, today)?;
@@ -799,6 +871,7 @@ async fn post_review(
         );
 
         db.record_review(
+            &user_key,
             &updated_card,
             &body.card_id,
             &cert,
@@ -817,6 +890,7 @@ async fn post_review(
 
 async fn post_session(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(body): Json<SessionBody>,
 ) -> ApiResult<serde_json::Value> {
     if body.correct > body.total {
@@ -826,9 +900,10 @@ async fn post_session(
     }
     let cert = state.cert_or_default(body.cert);
     let db_path = state.db_path.clone();
+    let user_key = extract_user_key(&headers);
 
     tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-        Db::open_or_at(db_path.as_deref())?.insert_session(&cert, body.total, body.correct)
+        Db::open_or_at(db_path.as_deref())?.insert_session(&user_key, &cert, body.total, body.correct)
     })
     .await
     .context("spawn_blocking panicked")??;
@@ -839,14 +914,16 @@ async fn post_session(
 async fn get_sessions(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SessionsParam>,
+    headers: HeaderMap,
 ) -> ApiResult<SessionsResponse> {
     let cert = state.cert_or_default(params.cert);
     let limit = params.limit.unwrap_or(30);
     let db_path = state.db_path.clone();
+    let user_key = extract_user_key(&headers);
 
     let result = tokio::task::spawn_blocking(move || -> anyhow::Result<SessionsResponse> {
         let sessions = Db::open_or_at(db_path.as_deref())?
-            .recent_sessions(&cert, limit)?
+            .recent_sessions(&user_key, &cert, limit)?
             .into_iter()
             .map(|(date, total, correct)| session_item(date, total, correct))
             .collect();
@@ -941,14 +1018,17 @@ async fn delete_bank(
 
 async fn post_pending_session(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(body): Json<PendingSessionBody>,
 ) -> ApiResult<serde_json::Value> {
     let cert = state.cert_or_default(body.cert);
     let db_path = state.db_path.clone();
+    let user_key = extract_user_key(&headers);
     let card_ids_json = serde_json::to_string(&body.card_ids).context("serialize card_ids")?;
 
     tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
         Db::open_or_at(db_path.as_deref())?.save_pending_session(
+            &user_key,
             &cert,
             &card_ids_json,
             &body.control_mode,
@@ -964,16 +1044,18 @@ async fn post_pending_session(
 async fn get_pending_session(
     State(state): State<Arc<AppState>>,
     Query(params): Query<CertParam>,
+    headers: HeaderMap,
 ) -> Result<Json<PendingSessionResponse>, ApiError> {
     let cert = state.cert_or_default(params.cert);
     let dir = state.questions_dir.clone();
     let db_path = state.db_path.clone();
+    let user_key = extract_user_key(&headers);
 
     let result = tokio::task::spawn_blocking(
         move || -> Result<Option<PendingSessionResponse>, ApiError> {
             let db = Db::open_or_at(db_path.as_deref())?;
             let Some((card_ids_json, control_mode, control_domain, started_at)) =
-                db.get_pending_session(&cert)?
+                db.get_pending_session(&user_key, &cert)?
             else {
                 return Ok(None);
             };
@@ -986,7 +1068,7 @@ async fn get_pending_session(
                 bank.questions.iter().map(|q| (q.id.as_str(), q)).collect();
 
             let id_refs: Vec<&str> = card_ids.iter().map(|s| s.as_str()).collect();
-            let raw_reviews = db.reviews_since(&cert, &id_refs, &started_at)?;
+            let raw_reviews = db.reviews_since(&user_key, &cert, &id_refs, &started_at)?;
 
             let reviewed_cards: Vec<ReviewedCard> = raw_reviews
                 .into_iter()
@@ -1027,12 +1109,14 @@ async fn get_pending_session(
 async fn delete_pending_session(
     State(state): State<Arc<AppState>>,
     Query(params): Query<CertParam>,
+    headers: HeaderMap,
 ) -> ApiResult<serde_json::Value> {
     let cert = state.cert_or_default(params.cert);
     let db_path = state.db_path.clone();
+    let user_key = extract_user_key(&headers);
 
     tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-        Db::open_or_at(db_path.as_deref())?.clear_pending_session(&cert)
+        Db::open_or_at(db_path.as_deref())?.clear_pending_session(&user_key, &cert)
     })
     .await
     .context("spawn_blocking panicked")??;
@@ -1293,7 +1377,7 @@ pub async fn run(questions_dir: PathBuf, cert: String, port: u16) -> anyhow::Res
         db_path: None,
     });
 
-    let app = Router::new()
+    let protected = Router::new()
         .route("/api/certs", get(get_certs))
         .route("/api/banks", get(get_banks).post(post_upload_bank))
         .route("/api/banks/{cert}", delete(delete_bank))
@@ -1315,11 +1399,29 @@ pub async fn run(questions_dir: PathBuf, cert: String, port: u16) -> anyhow::Res
         .route("/api/group-rooms/{code}/reveal", post(post_group_reveal))
         .route("/api/group-rooms/{code}/next", post(post_group_next))
         .route("/api/group-rooms/{code}/end", post(post_group_end))
-        .layer(CorsLayer::permissive())
+        .layer(middleware::from_fn(access_code_middleware))
         .with_state(state);
 
-    println!("study-engine serve  →  http://localhost:{port}");
-    let listener = TcpListener::bind(format!("127.0.0.1:{port}")).await?;
+    let public = Router::new()
+        .route("/api/config", get(get_config))
+        .route("/api/verify-code", post(post_verify_code));
+
+    let mut app = Router::new()
+        .merge(public)
+        .merge(protected)
+        .layer(CorsLayer::permissive());
+
+    // Serve built frontend assets when STUDY_ENGINE_STATIC_DIR is set.
+    // SPA fallback: any unmatched path serves index.html.
+    if let Ok(static_dir) = std::env::var("STUDY_ENGINE_STATIC_DIR") {
+        let index = format!("{static_dir}/index.html");
+        app = app.fallback_service(
+            ServeDir::new(&static_dir).not_found_service(ServeFile::new(index)),
+        );
+    }
+
+    println!("study-engine serve  →  http://0.0.0.0:{port}");
+    let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -1850,13 +1952,13 @@ mod handler_tests {
             last_review: Some("2026-06-04T12:00:00".to_string()),
             reps: 1,
         };
-        db.record_review(&due_card, "q1", "test", true, 4, None)
+        db.record_review("anonymous", &due_card, "q1", "test", true, 4, None)
             .unwrap();
-        db.record_review(&due_card, "q1", "test", true, 4, None)
+        db.record_review("anonymous", &due_card, "q1", "test", true, 4, None)
             .unwrap();
-        db.record_review(&future_card, "q2", "test", false, 1, None)
+        db.record_review("anonymous", &future_card, "q2", "test", false, 1, None)
             .unwrap();
-        db.insert_session("test", 3, 2).unwrap();
+        db.insert_session("anonymous", "test", 3, 2).unwrap();
 
         let resp = app
             .router
@@ -1897,9 +1999,9 @@ mod handler_tests {
             reps: 1,
             ..Default::default()
         };
-        db.record_review(&due_card, "q1", "test", false, 1, None)
+        db.record_review("anonymous", &due_card, "q1", "test", false, 1, None)
             .unwrap();
-        db.record_review(&future_card, "q2", "test", true, 4, None)
+        db.record_review("anonymous", &future_card, "q2", "test", true, 4, None)
             .unwrap();
 
         let resp = app
@@ -1953,7 +2055,7 @@ mod handler_tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let card = Db::open_at(&app.db_path)
             .unwrap()
-            .get_card("test", "q2")
+            .get_card("anonymous", "test", "q2")
             .unwrap();
         assert_eq!(card.reps, 0);
     }

@@ -13,6 +13,15 @@ import {
 
 const BASE = '/api'
 
+function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {}
+  const code = localStorage.getItem('accessCode')
+  const user = localStorage.getItem('userName')
+  if (code) headers['X-Access-Code'] = code
+  if (user) headers['X-User'] = user
+  return headers
+}
+
 async function checked(r: Response): Promise<unknown> {
   if (!r.ok) {
     const body = await r.json().catch(() => ({})) as Record<string, unknown>
@@ -22,12 +31,12 @@ async function checked(r: Response): Promise<unknown> {
 }
 
 export async function fetchCerts(): Promise<string[]> {
-  const r = await fetch(`${BASE}/certs`)
+  const r = await fetch(`${BASE}/certs`, { headers: authHeaders() })
   return certsResponseSchema.parse(await checked(r)).certs
 }
 
 export async function fetchBanks(): Promise<BankInfo[]> {
-  const r = await fetch(`${BASE}/banks`)
+  const r = await fetch(`${BASE}/banks`, { headers: authHeaders() })
   return banksResponseSchema.parse(await checked(r)).banks
 }
 
@@ -45,7 +54,7 @@ export async function uploadBank(
 ): Promise<UploadResult> {
   const r = await fetch(`${BASE}/banks`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, content, overwrite })
   })
   if (r.status === 409) return { ok: false, conflict: true }
@@ -53,13 +62,13 @@ export async function uploadBank(
 }
 
 export async function deleteBank(name: string): Promise<string[]> {
-  const r = await fetch(`${BASE}/banks/${encodeURIComponent(name)}`, { method: 'DELETE' })
+  const r = await fetch(`${BASE}/banks/${encodeURIComponent(name)}`, { method: 'DELETE', headers: authHeaders() })
   return certsResponseSchema.parse(await checked(r)).certs
 }
 
 export async function fetchStats(cert = 'cca-f'): Promise<Stats> {
   const params = new URLSearchParams({ cert })
-  const r = await fetch(`${BASE}/stats?${params}`)
+  const r = await fetch(`${BASE}/stats?${params}`, { headers: authHeaders() })
   return statsResponseSchema.parse(await checked(r))
 }
 
@@ -76,7 +85,7 @@ export async function fetchDue({
   if (tag) params.set('tag', tag)
   if (ids && ids.length) params.set('ids', ids.join(','))
   if (all) params.set('all', 'true')
-  const r = await fetch(`${BASE}/due?${params}`)
+  const r = await fetch(`${BASE}/due?${params}`, { headers: authHeaders() })
   return dueResponseSchema.parse(await checked(r))
 }
 
@@ -95,7 +104,7 @@ export async function fetchQuestions({
   if (domain !== null) params.set('domain', String(domain))
   if (tag) params.set('tag', tag)
   if (search) params.set('search', search)
-  const r = await fetch(`${BASE}/questions?${params}`)
+  const r = await fetch(`${BASE}/questions?${params}`, { headers: authHeaders() })
   return questionsResponseSchema.parse(await checked(r))
 }
 
@@ -114,7 +123,7 @@ export async function postReview({
 }): Promise<unknown> {
   const r = await fetch(`${BASE}/review`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ cardId, cert, rating, isCorrect, selected })
   })
   return checked(r)
@@ -133,7 +142,7 @@ export async function savePendingSession({
 }): Promise<void> {
   const r = await fetch(`${BASE}/pending-session`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ cert, cardIds, controlMode, controlDomain })
   })
   await checked(r)
@@ -141,14 +150,14 @@ export async function savePendingSession({
 
 export async function loadPendingSession(cert: string): Promise<PendingSessionResponse | null> {
   const params = new URLSearchParams({ cert })
-  const r = await fetch(`${BASE}/pending-session?${params}`)
+  const r = await fetch(`${BASE}/pending-session?${params}`, { headers: authHeaders() })
   if (r.status === 404) return null
   return pendingSessionResponseSchema.parse(await checked(r))
 }
 
 export async function clearPendingSession(cert: string): Promise<void> {
   const params = new URLSearchParams({ cert })
-  const r = await fetch(`${BASE}/pending-session?${params}`, { method: 'DELETE' })
+  const r = await fetch(`${BASE}/pending-session?${params}`, { method: 'DELETE', headers: authHeaders() })
   await checked(r)
 }
 
@@ -163,7 +172,7 @@ export async function postSession({
 }): Promise<unknown> {
   const r = await fetch(`${BASE}/session`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ cert, total, correct })
   })
   return checked(r)
@@ -177,14 +186,14 @@ export async function fetchSessions({
   limit?: number
 } = {}): Promise<SessionsResponse> {
   const params = new URLSearchParams({ cert, limit: String(limit) })
-  const r = await fetch(`${BASE}/sessions?${params}`)
+  const r = await fetch(`${BASE}/sessions?${params}`, { headers: authHeaders() })
   return sessionsResponseSchema.parse(await checked(r))
 }
 
 export async function createGroupRoom(cert = 'cca-f'): Promise<CreateGroupRoomResponse> {
   const r = await fetch(`${BASE}/group-rooms`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ cert })
   })
   return createGroupRoomResponseSchema.parse(await checked(r))
@@ -203,7 +212,7 @@ export async function fetchGroupRoom({
   if (participantId) params.set('participantId', participantId)
   const suffix = params.toString() ? `?${params}` : ''
   const r = await fetch(`${BASE}/group-rooms/${encodeURIComponent(code)}${suffix}`, {
-    headers: hostToken ? { 'X-Group-Host-Token': hostToken } : undefined
+    headers: hostToken ? { ...authHeaders(), 'X-Group-Host-Token': hostToken } : authHeaders()
   })
   return groupRoomStateSchema.parse(await checked(r))
 }
@@ -219,7 +228,7 @@ export async function voteGroupRoom({
 }): Promise<GroupRoomState> {
   const r = await fetch(`${BASE}/group-rooms/${encodeURIComponent(code)}/vote`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ participantId, answer })
   })
   return groupRoomStateSchema.parse(await checked(r))
@@ -228,7 +237,7 @@ export async function voteGroupRoom({
 async function postGroupHostAction(code: string, hostToken: string, action: 'reveal' | 'next' | 'end'): Promise<GroupRoomState> {
   const r = await fetch(`${BASE}/group-rooms/${encodeURIComponent(code)}/${action}`, {
     method: 'POST',
-    headers: { 'X-Group-Host-Token': hostToken }
+    headers: { ...authHeaders(), 'X-Group-Host-Token': hostToken }
   })
   return groupRoomStateSchema.parse(await checked(r))
 }

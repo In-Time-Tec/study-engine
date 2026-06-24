@@ -37,6 +37,9 @@ function lastCall(): [string, RequestInit | undefined] {
 function lastUrl(): string {
   return lastCall()[0]
 }
+function lastHeaders(): Record<string, string> {
+  return (lastCall()[1]?.headers ?? {}) as Record<string, string>
+}
 
 const groupState = {
   code: 'ABC234',
@@ -64,6 +67,19 @@ beforeEach(() => {
 })
 afterEach(() => {
   vi.unstubAllGlobals()
+})
+
+describe('authHeaders', () => {
+  test('includes X-Access-Code and X-User when stored in localStorage', async () => {
+    localStorage.setItem('accessCode', 'secret')
+    localStorage.setItem('userName', 'Alice')
+    fetchMock.mockResolvedValue(ok({ certs: [] }))
+    await fetchCerts()
+    expect(lastHeaders()['X-Access-Code']).toBe('secret')
+    expect(lastHeaders()['X-User']).toBe('Alice')
+    localStorage.removeItem('accessCode')
+    localStorage.removeItem('userName')
+  })
 })
 
 describe('GET endpoints', () => {
@@ -149,7 +165,7 @@ describe('GET endpoints', () => {
     await fetchGroupRoom({ code: 'ABC234' })
     const [url, init] = lastCall()
     expect(url).toBe('/api/group-rooms/ABC234')
-    expect(init?.headers).toBeUndefined()
+    expect(init?.headers).toEqual({})
   })
 })
 

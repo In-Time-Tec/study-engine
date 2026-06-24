@@ -165,7 +165,7 @@ fn run_cards(questions: &[&Question], bank: &Bank, db: &Db, cert: &str) -> Resul
     let today = Local::now().date_naive();
 
     for (i, q) in questions.iter().enumerate() {
-        let card = db.get_card(cert, &q.id)?;
+        let card = db.get_card("default", cert, &q.id)?;
         display_question(i + 1, questions.len(), q, bank, &card);
 
         let answer = loop {
@@ -198,7 +198,7 @@ fn run_cards(questions: &[&Question], bank: &Bank, db: &Db, cert: &str) -> Resul
             correct,
         );
 
-        db.record_review(&updated_card, &q.id, cert, correct, rating, None)?;
+        db.record_review("default", &updated_card, &q.id, cert, correct, rating, None)?;
 
         total += 1;
         if correct {
@@ -221,7 +221,7 @@ pub fn study(
 ) -> Result<()> {
     let mut card_cache = HashMap::new();
     for &q in questions {
-        card_cache.insert(q.id.clone(), db.get_card(cert, &q.id)?);
+        card_cache.insert(q.id.clone(), db.get_card("default", cert, &q.id)?);
     }
     let today = Local::now().format("%Y-%m-%d").to_string();
     let plan = plan_study_session(
@@ -255,7 +255,7 @@ pub fn study(
 
     let (total, correct) = run_cards(&plan.session, bank, db, cert)?;
     if total > 0 {
-        db.insert_session(cert, total, correct)?;
+        db.insert_session("default", cert, total, correct)?;
         let pct = correct * 100 / total;
         println!("\n{BLD}Session done:{RST} {correct}/{total} ({pct}%)");
     }
@@ -271,7 +271,7 @@ pub fn all(questions: &[&Question], bank: &Bank, db: &Db, cert: &str) -> Result<
 
     let (total, correct) = run_cards(&shuffled, bank, db, cert)?;
     if total > 0 {
-        db.insert_session(cert, total, correct)?;
+        db.insert_session("default", cert, total, correct)?;
         let pct = correct * 100 / total;
         println!("\n{BLD}Done:{RST} {correct}/{total} ({pct}%)");
     }

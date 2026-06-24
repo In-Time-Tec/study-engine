@@ -31,6 +31,18 @@ const api = vi.hoisted(() => ({
 
 vi.mock('./api', () => api)
 
+// AccessGate calls fetch('/api/config') directly (not through the api module).
+// Return { requiresCode: false } so the gate auto-skips when a userName is stored.
+globalThis.fetch = vi.fn(async (url: RequestInfo) => {
+  if (String(url).includes('/api/config')) {
+    return new Response(JSON.stringify({ requiresCode: false }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+  throw new Error(`Unmocked fetch: ${url}`)
+}) as typeof fetch
+
 const statsFull: Stats = {
   dueToday: 3,
   nextDue: '2026-06-10',
@@ -206,6 +218,7 @@ function resetApi(): void {
   }
   window.history.replaceState(null, '', '/')
   localStorage.clear()
+  localStorage.setItem('userName', 'test-user')
   api.fetchCerts.mockResolvedValue(['cca-f'])
   api.postReview.mockResolvedValue({})
   api.postSession.mockResolvedValue({})

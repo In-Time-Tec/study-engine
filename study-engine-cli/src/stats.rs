@@ -25,9 +25,9 @@ pub fn show(questions: &[&Question], bank: &Bank, db: &Db, cert: &str) -> Result
     println!("  {} — Progress", bank.name);
     println!("{BLD}{CYN}{}={RST}\n", "=".repeat(62));
 
-    let cards = db.all_cards(cert)?;
-    let reviews = db.all_reviews(cert)?;
-    let sessions = db.recent_sessions(cert, 5)?;
+    let cards = db.all_cards("default", cert)?;
+    let reviews = db.all_reviews("default", cert)?;
+    let sessions = db.recent_sessions("default", cert, 5)?;
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let summary = summarize_progress(bank, questions, &cards, &reviews, &sessions, &today);
 
@@ -197,11 +197,11 @@ mod tests {
 
         let mastered = reviewed_card("q1", "test", 3, "2020-01-01");
         let learning = reviewed_card("q2", "test", 1, "2099-01-01");
-        db.record_review(&mastered, "q1", "test", true, 4, None).unwrap();
-        db.record_review(&mastered, "q1", "test", true, 4, None).unwrap();
-        db.record_review(&learning, "q2", "test", true, 3, None).unwrap();
-        db.record_review(&learning, "q2", "test", false, 1, None).unwrap();
-        db.insert_session("test", 4, 3).unwrap();
+        db.record_review("default", &mastered, "q1", "test", true, 4, None).unwrap();
+        db.record_review("default", &mastered, "q1", "test", true, 4, None).unwrap();
+        db.record_review("default", &learning, "q2", "test", true, 3, None).unwrap();
+        db.record_review("default", &learning, "q2", "test", false, 1, None).unwrap();
+        db.insert_session("default", "test", 4, 3).unwrap();
 
         show(&questions, &bank, &db, "test").unwrap();
     }

@@ -94,6 +94,10 @@ fn main() -> Result<()> {
 
     // Serve runs its own async runtime and handles requests independently
     if let Some(Cmd::Serve { port }) = cli.command {
+        let port = std::env::var("PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(port);
         tokio::runtime::Runtime::new()?.block_on(serve::run(questions_dir, cli.cert, port))?;
         return Ok(());
     }

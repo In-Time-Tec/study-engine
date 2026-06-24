@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte'
+  import { untrack } from 'svelte'
+  import AccessGate from './lib/AccessGate.svelte'
   import Dashboard from './lib/Dashboard.svelte'
   import StudySession from './lib/StudySession.svelte'
   import Browse from './lib/Browse.svelte'
@@ -11,15 +12,16 @@
   import { loadSelectedCert, saveSelectedCert } from './lib/certSelection'
   import type { Stats } from './lib/types'
 
+  let ready = $state(false)
   let tab: string = $state('dashboard')
-  let roomCode: string | null = $state(null)
+  let roomCode: string | null = $state(new URLSearchParams(window.location.search).get('room'))
   let studyMode: string = $state('due')
   let studyDomain: number | null = $state(null)
   let quizIds: string[] | null = $state(null)
 
   let certs: string[] = $state([])
   let cert: string = $state('')
-  let certsLoading = $state(true)
+  let certsLoading = $state(false)
   let headerStats: Stats | null = $state(null)
   let headerStatsLoading = $state(false)
   let headerStatsError: string | null = $state(null)
@@ -29,8 +31,8 @@
     nextSessionDueText(headerStats, certsLoading || headerStatsLoading, headerStatsError, Boolean(cert))
   )
 
-  onMount(async () => {
-    roomCode = new URLSearchParams(window.location.search).get('room')
+  async function loadCerts(): Promise<void> {
+    certsLoading = true
     try {
       applyCerts(await fetchCerts())
     } catch {
@@ -38,7 +40,7 @@
     } finally {
       certsLoading = false
     }
-  })
+  }
 
   $effect(() => {
     const selectedCert = cert
@@ -130,6 +132,10 @@
   }
 </script>
 
+{#if !ready}
+  <AccessGate onready={() => { ready = true; void loadCerts() }} />
+{:else}
+
 <div class="header">
   <div class="header-brand">STUDY ENGINE</div>
   {#if !roomCode}
@@ -198,3 +204,5 @@
 <footer class="footer">
   study-engine — a local-first spaced-repetition tool. Bring your own question bank.
 </footer>
+
+{/if}
