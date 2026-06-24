@@ -53,6 +53,36 @@ study-engine serve --port 3001        # HTTP API for the web UI
 Only three FSRS ratings are used: Again, Good, Easy. Wrong answers are rated
 Again automatically; correct answers let you choose Good or Easy by confidence.
 
+## Group study
+
+The web UI includes a real-time group study mode for working through cards
+together. No account or server setup required beyond the shared study-engine
+instance.
+
+**Starting a room (host):**
+
+1. Open the web UI and switch to the **Group** tab.
+2. Click **Start Room**. A room code and shareable join link appear.
+3. Send the link to participants. The host controls the pace — **Reveal** shows
+   the correct answer and vote totals after everyone has answered, then **Next**
+   advances to the next card.
+4. Vote counts are hidden while voting so participants can't be anchored by the
+   crowd. Only the total number of answers ("X answered") is visible until the
+   host reveals.
+
+**Joining a room (student):**
+
+Open the join link directly, or paste the room code into the **Join** panel on
+the Group tab. Students see the same card as the host and vote independently.
+No review progress is saved for group sessions — this is a collaborative
+discussion mode, not a replacement for solo spaced repetition.
+
+## Themes
+
+Four built-in themes are available in the Settings tab: **Amber**, **Green**,
+**Cyan**, and **Light**. A custom hue/saturation picker lets you derive any
+dark-mode palette. Theme choice is persisted in `localStorage` per browser.
+
 ## Question banks
 
 A bank is a single JSON file named `<cert>.json`. The repository includes

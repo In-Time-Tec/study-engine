@@ -178,7 +178,7 @@
     {:else if q}
       <div class="session-progress">
         <span>Card <span>{state.currentIndex + 1}</span> / {state.totalQuestions}</span>
-        <span style="color:var(--dim)">{state.totalVotes} votes</span>
+        <span style="color:var(--dim)">{state.totalVotes} answered</span>
       </div>
 
       <div class="panel">
@@ -190,15 +190,17 @@
 
         <div class="vote-list">
           {#each state.voteCounts as vote}
-            <div class="vote-row">
+            <div class="vote-row {isRevealed ? '' : 'vote-row-hidden'}">
               <div class="vote-answer">
                 <span class="option-key">{vote.answer}</span>
                 <span>{q.options[vote.answer]}</span>
               </div>
-              <div class="vote-track">
-                <div class="vote-fill" style="width:{pct(vote.count)}%"></div>
-              </div>
-              <div class="vote-count">{vote.count}</div>
+              {#if isRevealed}
+                <div class="vote-track">
+                  <div class="vote-fill" style="width:{pct(vote.count)}%"></div>
+                </div>
+                <div class="vote-count">{vote.count}</div>
+              {/if}
             </div>
           {/each}
         </div>

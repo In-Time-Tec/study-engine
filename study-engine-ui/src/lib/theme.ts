@@ -22,7 +22,7 @@ const TOKEN_BASE: Record<TokenName, { hueOffset: number; l: number }> = {
   panel2: { hueOffset: 2,  l: 7 },
   border: { hueOffset: 3,  l: 12 },
   fg:     { hueOffset: 0,  l: 50 },
-  dim:    { hueOffset: 3,  l: 24 },
+  dim:    { hueOffset: 3,  l: 35 },
   muted:  { hueOffset: 3,  l: 12 },
   bright: { hueOffset: 4,  l: 65 },
   mid:    { hueOffset: -8, l: 50 },
@@ -54,7 +54,7 @@ const LIGHT_THEME: ThemeTokens = {
   muted:  'hsl(42, 22%, 68%)',
   bright: 'hsl(38, 90%, 30%)',
   mid:    'hsl(32, 90%, 38%)',
-  low:    'hsl(42, 40%, 80%)'
+  low:    'hsl(30, 70%, 32%)'
 }
 
 export type PresetName = 'amber' | 'green' | 'cyan' | 'light'
