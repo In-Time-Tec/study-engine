@@ -9,6 +9,7 @@
 // at the boundary instead of silently flowing in as `undefined`.
 import { z } from 'zod'
 import type { Question } from './generated/Question'
+import type { QuestionSource } from './generated/QuestionSource'
 import type { CardState } from './generated/CardState'
 import type { CardWithQuestion } from './generated/CardWithQuestion'
 import type { DomainStat } from './generated/DomainStat'
@@ -29,6 +30,13 @@ import type { GroupVoteCount } from './generated/GroupVoteCount'
 import type { GroupRoomState } from './generated/GroupRoomState'
 import type { CreateGroupRoomResponse } from './generated/CreateGroupRoomResponse'
 
+export const questionSourceSchema = z.object({
+  url: z.string(),
+  quote: z.string(),
+  confidence: z.string(),
+  issues: z.array(z.string())
+}) satisfies z.ZodType<QuestionSource>
+
 export const questionSchema = z.object({
   id: z.string(),
   domain: z.number(),
@@ -38,7 +46,8 @@ export const questionSchema = z.object({
   answer: z.string(),
   explanation: z.string(),
   tags: z.array(z.string()),
-  glossaryExclude: z.array(z.string())
+  glossaryExclude: z.array(z.string()),
+  source: questionSourceSchema.nullable().optional()
 }) satisfies z.ZodType<Question>
 
 export const glossaryEntrySchema = z.object({
