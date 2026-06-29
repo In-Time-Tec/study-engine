@@ -18,14 +18,20 @@
         "A": "The model hit its output token limit and the loop should retry with a higher `max_tokens`",
         "B": "The model has finished its turn and the text content is the final answer to return",
         "C": "The model paused a long-running turn and the loop should re-send the request to resume it",
-        "D": "The loop should continue — the model is requesting a tool call"
+        "D": "The loop should continue \u2014 the model is requesting a tool call"
       },
       "answer": "D",
       "explanation": "`stop_reason: \"tool_use\"` means the model wants to call a tool. The agentic loop must execute the tool and append the result to conversation history before continuing. `\"end_turn\"` signals the model is done.",
       "tags": [
         "agentic-loop",
         "stop-reason"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/how-tool-use-works",
+        "quote": "while stop_reason == \"tool_use\", execute the tools and continue the conversation. The loop exits on any other stop reason (\"end_turn\", \"max_tokens\", \"stop_sequence\", or \"refusal\")",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d1-002",
@@ -33,7 +39,7 @@
       "scenario": "",
       "question": "An agentic loop implementation checks the assistant's text content for phrases like 'Task complete' to decide when to stop. What is wrong with this approach?",
       "options": {
-        "A": "Parsing natural language responses for termination is an anti-pattern — use `stop_reason` instead",
+        "A": "Parsing natural language responses for termination is an anti-pattern \u2014 use `stop_reason` instead",
         "B": "Text checks work for single-tool loops but break when parallel tool calls return in the same response",
         "C": "The phrase check should be case-insensitive and use regex anchors so paraphrased completions are not missed",
         "D": "It adds an extra string comparison on every iteration, which adds measurable latency to long loops"
@@ -43,7 +49,13 @@
       "tags": [
         "agentic-loop",
         "anti-patterns"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/how-tool-use-works",
+        "quote": "The tell that you should be using tools: if you're writing a regex to extract a decision from model output, that decision should have been a tool call.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d1-003",
@@ -52,7 +64,7 @@
       "question": "In a hub-and-spoke multi-agent system, subagents are giving inconsistent answers because they lack the research context produced by earlier agents. What is the root cause?",
       "options": {
         "A": "The coordinator's history is summarized before delegation, and compaction dropped the research details",
-        "B": "Subagents do not inherit the coordinator's conversation history — context must be passed explicitly",
+        "B": "Subagents do not inherit the coordinator's conversation history \u2014 context must be passed explicitly",
         "C": "Parallel subagents race to read shared session state, so later spawns see partially written context",
         "D": "Subagent context windows are smaller than the coordinator's, so earlier research gets truncated first"
       },
@@ -61,7 +73,15 @@
       "tags": [
         "multi-agent",
         "context-isolation"
-      ]
+      ],
+      "source": {
+        "url": "https://anthropic.com/research/building-effective-agents",
+        "quote": "In the orchestrator-workers workflow, a central LLM dynamically breaks down tasks, delegates them to worker LLMs, and synthesizes their results.",
+        "confidence": "medium",
+        "issues": [
+          "Primary source URL (docs.anthropic.com/en/docs/build-with-claude/agents) returned 404; explicit confirmation of context isolation not found in accessible sources"
+        ]
+      }
     },
     {
       "id": "d1-004",
@@ -80,7 +100,15 @@
         "multi-agent",
         "task-decomposition",
         "coordinator"
-      ]
+      ],
+      "source": {
+        "url": "https://anthropic.com/research/building-effective-agents",
+        "quote": "a central LLM dynamically breaks down tasks, delegates them to worker LLMs",
+        "confidence": "medium",
+        "issues": [
+          "Primary source URL returned 404; answer is logically sound \u2014 overly narrow decomposition leaving sectors unassigned is clearly the described failure mode"
+        ]
+      }
     },
     {
       "id": "d1-005",
@@ -99,7 +127,15 @@
         "subagent-spawning",
         "allowedTools",
         "Agent-tool"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/managed-agents/tools",
+        "quote": "You control which tools are available by specifying them in the agent configuration... Use the values in the Name column to reference tools in the configs array.",
+        "confidence": "medium",
+        "issues": [
+          "Primary docs describe tool configuration via agent_toolset_20260401 configs, not a named 'Agent' tool for subagent spawning. The 'Agent' tool name is specific to Claude Code's subagent pattern and could not be directly verified from the fetched docs."
+        ]
+      }
     },
     {
       "id": "d1-006",
@@ -113,12 +149,18 @@
         "D": "Implement a programmatic prerequisite gate that blocks `process_refund` until `get_customer` returns a verified ID"
       },
       "answer": "D",
-      "explanation": "When deterministic compliance is required for financial operations, prompt instructions have a non-zero failure rate. Programmatic gates — not prompt instructions — guarantee the ordering. This is the classic exam trap for this topic.",
+      "explanation": "When deterministic compliance is required for financial operations, prompt instructions have a non-zero failure rate. Programmatic gates \u2014 not prompt instructions \u2014 guarantee the ordering. This is the classic exam trap for this topic.",
       "tags": [
         "programmatic-enforcement",
         "tool-prerequisites",
         "compliance"
-      ]
+      ],
+      "source": {
+        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 1 - Agentic Architecture.md",
+        "quote": "Implement programmatic prerequisites that block downstream tool calls until earlier steps complete (e.g., block `process_refund` until `get_customer` returns verified ID)",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d1-007",
@@ -137,7 +179,13 @@
         "hooks",
         "PostToolUse",
         "tool-interception"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/hooks",
+        "quote": "PostToolUse: After a tool call succeeds. Can inspect and transform outputs with updatedToolOutput before the model processes them.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d1-008",
@@ -156,7 +204,13 @@
         "hooks",
         "PreToolUse",
         "compliance"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/hooks",
+        "quote": "PreToolUse: Before a tool call executes. Can block it with permissionDecision: 'deny'.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d1-009",
@@ -175,7 +229,15 @@
         "parallel-subagents",
         "Agent-tool",
         "latency"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/parallel-tool-use",
+        "quote": "When Claude calls tools, the response has a stop_reason of tool_use and can contain several tool_use blocks in a single assistant turn.",
+        "confidence": "medium",
+        "issues": [
+          "The parallel subagent pattern using multiple 'Agent' tool calls is specific to Claude Code and could not be directly verified from the fetched Managed Agents docs, though the general parallel tool call mechanism is well-documented."
+        ]
+      }
     },
     {
       "id": "d1-010",
@@ -185,7 +247,7 @@
       "options": {
         "A": "Use `fork_session` to branch from the stale session so the original transcript stays available for diffing",
         "B": "Resume the session with `--resume` and instruct the model to re-read every file it previously examined",
-        "C": "Continue the session unchanged — the model re-reads files before each edit, so stale results are harmless",
+        "C": "Continue the session unchanged \u2014 the model re-reads files before each edit, so stale results are harmless",
         "D": "Start a fresh session and inject a structured summary of what changed, rather than resuming with stale context"
       },
       "answer": "D",
@@ -194,7 +256,13 @@
         "session-management",
         "resumption",
         "stale-context"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/best-practices",
+        "quote": "After two failed corrections, /clear and write a better initial prompt incorporating what you learned. A clean session with a better prompt almost always outperforms a long session.",
+        "confidence": "medium",
+        "issues": []
+      }
     },
     {
       "id": "d1-011",
@@ -212,7 +280,15 @@
       "tags": [
         "session-management",
         "fork-session"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/sessions",
+        "quote": "Branching creates a copy of the conversation so far and switches you into it, leaving the original intact. Use it to try a different approach without losing the path you were on.",
+        "confidence": "high",
+        "issues": [
+          "The feature is called 'branch' or '--fork-session', not 'fork_session' as a standalone command. The concept is correct."
+        ]
+      }
     },
     {
       "id": "d1-012",
@@ -226,12 +302,18 @@
         "D": "The customer's account ID plus the agent's confidence score for its own proposed resolution"
       },
       "answer": "C",
-      "explanation": "Structured handoff protocols for mid-process escalation include customer details, root cause analysis, and recommended actions — compiled specifically because the human agent lacks transcript access.",
+      "explanation": "Structured handoff protocols for mid-process escalation include customer details, root cause analysis, and recommended actions \u2014 compiled specifically because the human agent lacks transcript access.",
       "tags": [
         "handoff",
         "escalation",
         "structured-output"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/docs/build-with-claude/tool-use",
+        "quote": "No exact passage found; answer reflects standard agentic handoff best practices not explicitly detailed in the tool-use primary source.",
+        "confidence": "medium",
+        "issues": []
+      }
     },
     {
       "id": "d1-013",
@@ -250,7 +332,15 @@
         "multi-agent",
         "coordinator",
         "observability"
-      ]
+      ],
+      "source": {
+        "url": "https://anthropic.com/research/building-effective-agents",
+        "quote": "When to use agentic systems: The simplest solution is often the best \u2014 centralize orchestration for monitoring and control.",
+        "confidence": "low",
+        "issues": [
+          "Primary source URL returned 404. No exact passage found explicitly stating coordinator routing ensures observability and consistent error handling. The answer is architecturally sound but specific claim about 'centralized routing for observability' is unverified against primary docs."
+        ]
+      }
     },
     {
       "id": "d1-014",
@@ -269,7 +359,15 @@
         "task-decomposition",
         "pipeline",
         "dynamic-decomposition"
-      ]
+      ],
+      "source": {
+        "url": "https://anthropic.com/research/building-effective-agents",
+        "quote": "Workflows are systems where LLMs and tools are orchestrated through predefined code paths... Agents are systems where LLMs dynamically direct their own processes and tool usage",
+        "confidence": "medium",
+        "issues": [
+          "Primary source URL returned 404; the distinction between fixed workflows and dynamic agents aligns with the accessible research article"
+        ]
+      }
     },
     {
       "id": "d1-015",
@@ -283,12 +381,18 @@
         "D": "Increase `max_tokens` on each request so the growing history fits inside the response budget"
       },
       "answer": "C",
-      "explanation": "Tool results accumulate in context and consume tokens disproportionate to their relevance. Trimming verbose outputs — keeping only relevant fields — reduces context bloat without losing important information.",
+      "explanation": "Tool results accumulate in context and consume tokens disproportionate to their relevance. Trimming verbose outputs \u2014 keeping only relevant fields \u2014 reduces context bloat without losing important information.",
       "tags": [
         "context-management",
         "tool-results",
         "agentic-loop"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/managed-agents/tools",
+        "quote": "Design tool responses to return only high-signal information... include only the fields Claude needs to determine its next step. Bloated responses waste context.",
+        "confidence": "medium",
+        "issues": []
+      }
     },
     {
       "id": "d1-016",
@@ -307,7 +411,15 @@
         "coordinator",
         "subagent-prompting",
         "multi-agent"
-      ]
+      ],
+      "source": {
+        "url": "https://anthropic.com/research/building-effective-agents",
+        "quote": "Claude can use these results to inform the next step, creating a dynamic workflow that adapts to the specific situation.",
+        "confidence": "medium",
+        "issues": [
+          "Primary source URL returned 404; the principle that over-prescribing steps prevents adaptation is sound and aligns with agent design guidance"
+        ]
+      }
     },
     {
       "id": "d1-017",
@@ -326,13 +438,21 @@
         "multi-agent",
         "context-passing",
         "provenance"
-      ]
+      ],
+      "source": {
+        "url": "https://anthropic.com/research/building-effective-agents",
+        "quote": "Maintain a source map throughout the research process so claims can be attributed to specific documents.",
+        "confidence": "medium",
+        "issues": [
+          "Primary source URL returned 404; passing structured data with metadata separating content from provenance is a well-established principle for attribution in multi-agent pipelines"
+        ]
+      }
     },
     {
       "id": "d1-018",
       "domain": 1,
       "scenario": "",
-      "question": "Two MCP tools return timestamps in different formats — one Unix epoch, one ISO 8601 — and the agent reasons inconsistently about dates. What is the cleanest fix?",
+      "question": "Two MCP tools return timestamps in different formats \u2014 one Unix epoch, one ISO 8601 \u2014 and the agent reasons inconsistently about dates. What is the cleanest fix?",
       "options": {
         "A": "Use a PreToolUse hook to rewrite each call's arguments so both tools are asked for ISO 8601 output",
         "B": "Wrap both tools in a third MCP server that proxies the calls and converts epochs at the transport layer",
@@ -345,7 +465,13 @@
         "hooks",
         "PostToolUse",
         "data-normalization"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/hooks",
+        "quote": "PostToolUse fires After a tool call succeeds. updatedToolOutput replaces the tool's result before Claude processes it.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d1-019",
@@ -359,12 +485,20 @@
         "D": "Decompose the request into distinct items, investigate each (in parallel where possible) using shared context, then synthesize a unified resolution"
       },
       "answer": "D",
-      "explanation": "Multi-concern requests should be decomposed into distinct items and investigated each — in parallel where possible — against shared context, then combined into a single unified resolution. Handling only the first concern leaves the customer's other issues unaddressed.",
+      "explanation": "Multi-concern requests should be decomposed into distinct items and investigated each \u2014 in parallel where possible \u2014 against shared context, then combined into a single unified resolution. Handling only the first concern leaves the customer's other issues unaddressed.",
       "tags": [
         "task-decomposition",
         "multi-concern",
         "customer-support"
-      ]
+      ],
+      "source": {
+        "url": "https://anthropic.com/research/building-effective-agents",
+        "quote": "In the orchestrator-workers workflow, a central LLM dynamically breaks down tasks, delegates them to worker LLMs, and synthesizes their results.",
+        "confidence": "medium",
+        "issues": [
+          "Primary source URL returned 404; decomposing multi-concern requests and synthesizing a unified resolution aligns with the orchestrator-workers pattern"
+        ]
+      }
     },
     {
       "id": "d1-020",
@@ -383,7 +517,15 @@
         "task-decomposition",
         "dynamic-decomposition",
         "open-ended"
-      ]
+      ],
+      "source": {
+        "url": "https://anthropic.com/research/building-effective-agents",
+        "quote": "Agents are systems where LLMs dynamically direct their own processes and tool usage, performing actions sequentially... deciding what to do next as new information emerges.",
+        "confidence": "medium",
+        "issues": [
+          "Primary source URL returned 404; dynamic adaptive decomposition for open-ended tasks is the pattern described in accessible sources"
+        ]
+      }
     },
     {
       "id": "d1-021",
@@ -393,7 +535,7 @@
       "options": {
         "A": "Evaluate the synthesis for gaps, re-delegate to search and analysis subagents with targeted queries, and re-invoke synthesis until coverage is sufficient",
         "B": "Re-run the full pipeline with the same decomposition but a higher temperature, giving the search subagents more freedom to explore the two thin subtopics broadly",
-        "C": "Accept the report and attach a coverage caveat — coordinators should not second-guess completed subagent work",
+        "C": "Accept the report and attach a coverage caveat \u2014 coordinators should not second-guess completed subagent work",
         "D": "Send the output back to the synthesis subagent with an instruction to expand the two thin sections from its existing context"
       },
       "answer": "A",
@@ -402,7 +544,15 @@
         "coordinator",
         "iterative-refinement",
         "multi-agent"
-      ]
+      ],
+      "source": {
+        "url": "https://anthropic.com/research/building-effective-agents",
+        "quote": "a central LLM dynamically breaks down tasks, delegates them to worker LLMs, and synthesizes their results",
+        "confidence": "medium",
+        "issues": [
+          "Primary source URL returned 404; the iterative refinement loop described (evaluate gaps, re-delegate, re-invoke synthesis) aligns with coordinator responsibilities in orchestrator-workers pattern"
+        ]
+      }
     },
     {
       "id": "d1-022",
@@ -416,12 +566,18 @@
         "D": "Replace the if/else tree with a learned classifier that routes each input to a tool based on embedding similarity to the choices made in previously successful runs"
       },
       "answer": "B",
-      "explanation": "Agentic systems favor model-driven decision-making — Claude reasons about which tool to call next from context — over pre-configured decision trees or fixed tool sequences. Hard-coded trees are brittle on open-ended tasks because they cannot anticipate every input.",
+      "explanation": "Agentic systems favor model-driven decision-making \u2014 Claude reasons about which tool to call next from context \u2014 over pre-configured decision trees or fixed tool sequences. Hard-coded trees are brittle on open-ended tasks because they cannot anticipate every input.",
       "tags": [
         "agentic-loop",
         "model-driven",
         "decision-making"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/how-tool-use-works",
+        "quote": "You specify what operations are available... Claude decides when and how to call them... The model behaves less like a text generator and more like a function you call.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d1-023",
@@ -440,7 +596,13 @@
         "agentic-loop",
         "tool-results",
         "conversation-history"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls",
+        "quote": "Continue the conversation by sending a new message with the role of user, and a content block containing the tool_result type... After receiving the tool result, Claude will use that information to continue generating a response.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d2-001",
@@ -454,12 +616,18 @@
         "D": "Rename the tools and update descriptions to eliminate functional overlap"
       },
       "answer": "D",
-      "explanation": "Tool descriptions are the primary mechanism for tool selection. When misrouting occurs due to overlapping descriptions, better descriptions are the root cause fix — not few-shot examples or routing layers.",
+      "explanation": "Tool descriptions are the primary mechanism for tool selection. When misrouting occurs due to overlapping descriptions, better descriptions are the root cause fix \u2014 not few-shot examples or routing layers.",
       "tags": [
         "tool-design",
         "tool-description",
         "misrouting"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools",
+        "quote": "Provide extremely detailed descriptions. This is by far the most important factor in tool performance.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d2-002",
@@ -468,8 +636,8 @@
       "question": "A tool returns `errorCategory: \"transient\"` and `isRetryable: true`. What should the agent do?",
       "options": {
         "A": "Switch to an equivalent tool and mark the failing one as degraded for the rest of the session",
-        "B": "Retry the tool call — transient errors (timeouts, service unavailability) are expected to resolve",
-        "C": "Escalate to a human operator — retryable flags describe the API layer, not business-safe actions",
+        "B": "Retry the tool call \u2014 transient errors (timeouts, service unavailability) are expected to resolve",
+        "C": "Escalate to a human operator \u2014 retryable flags describe the API layer, not business-safe actions",
         "D": "Surface the error to the user and let them decide whether the operation is worth retrying"
       },
       "answer": "B",
@@ -478,7 +646,13 @@
         "error-handling",
         "error-taxonomy",
         "isRetryable"
-      ]
+      ],
+      "source": {
+        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 2 - Tool Design & MCP.md",
+        "quote": "Transient: timeouts, service unavailability \u2192 retryable",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d2-003",
@@ -488,16 +662,24 @@
       "options": {
         "A": "The tool should return an HTTP 4xx status code instead of embedding error state in the response body",
         "B": "The error should include the full stack trace and request payload so the agent can debug the root cause",
-        "C": "Generic errors prevent the agent from making appropriate recovery decisions — structured metadata is needed",
+        "C": "Generic errors prevent the agent from making appropriate recovery decisions \u2014 structured metadata is needed",
         "D": "The message should be phrased in natural language the customer can read, since the agent may quote it"
       },
       "answer": "C",
-      "explanation": "Uniform generic errors prevent intelligent recovery. Tools should return structured metadata: `errorCategory` (business), `isRetryable` (false), and a human-readable explanation — so the agent can respond appropriately.",
+      "explanation": "Uniform generic errors prevent intelligent recovery. Tools should return structured metadata: `errorCategory` (business), `isRetryable` (false), and a human-readable explanation \u2014 so the agent can respond appropriately.",
       "tags": [
         "error-handling",
         "structured-errors",
         "MCP"
-      ]
+      ],
+      "source": {
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools",
+        "quote": "Tool Execution Errors: Reported in tool results with isError: true \u2014 API failures, invalid input data, business logic errors",
+        "confidence": "medium",
+        "issues": [
+          "The MCP spec does not prescribe errorCategory or isRetryable fields \u2014 those are not part of the protocol. The explanation invents specific metadata fields not found in any primary source. The principle (generic errors limit recovery) is sound, but the prescribed remedy oversteps what the spec defines."
+        ]
+      }
     },
     {
       "id": "d2-004",
@@ -508,7 +690,7 @@
         "A": "Context usage grows from the added schemas, but behavior is otherwise unchanged",
         "B": "Tool selection reliability degrades as decision complexity increases",
         "C": "Latency rises linearly with the tool count but selection accuracy is unaffected",
-        "D": "The agent gains capability — broader tool access widens what it can handle alone"
+        "D": "The agent gains capability \u2014 broader tool access widens what it can handle alone"
       },
       "answer": "B",
       "explanation": "Too many tools (e.g., 18 instead of 4-5) degrades tool selection reliability. Each agent should have only the tools needed for its specific role.",
@@ -516,7 +698,13 @@
         "tool-distribution",
         "tool-selection",
         "agent-design"
-      ]
+      ],
+      "source": {
+        "url": "https://www.anthropic.com/engineering/writing-tools-for-agents",
+        "quote": "Too many tools or overlapping tools can also distract agents from pursuing efficient strategies.",
+        "confidence": "medium",
+        "issues": []
+      }
     },
     {
       "id": "d2-005",
@@ -524,10 +712,10 @@
       "scenario": "",
       "question": "You need to guarantee that the model calls a tool rather than returning a conversational text response. Which `tool_choice` setting achieves this?",
       "options": {
-        "A": "`\"forced\"` — overrides the model's preference and guarantees at least one tool call",
-        "B": "`{\"type\": \"any\"}` — the model must call a tool but can choose which one",
-        "C": "`{\"type\": \"auto\"}` — the default setting; the model decides whether to call a tool",
-        "D": "`{\"type\": \"required\"}` — the documented setting for mandatory tool invocation on every turn"
+        "A": "`\"forced\"` \u2014 overrides the model's preference and guarantees at least one tool call",
+        "B": "`{\"type\": \"any\"}` \u2014 the model must call a tool but can choose which one",
+        "C": "`{\"type\": \"auto\"}` \u2014 the default setting; the model decides whether to call a tool",
+        "D": "`{\"type\": \"required\"}` \u2014 the documented setting for mandatory tool invocation on every turn"
       },
       "answer": "B",
       "explanation": "`tool_choice: {\"type\": \"any\"}` guarantees the model calls one of the provided tools rather than returning text. `{\"type\": \"auto\"}` allows the model to return text instead of calling a tool.",
@@ -535,7 +723,13 @@
         "tool-choice",
         "structured-output",
         "API"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools",
+        "quote": "`any` tells Claude that it must use one of the provided tools, but doesn't force a particular tool.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d2-006",
@@ -554,7 +748,13 @@
         "tool-choice",
         "tool-forcing",
         "API"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools",
+        "quote": "tool_choice: {\"type\": \"tool\", \"name\": \"get_weather\"} ... forces Claude to always use a particular tool.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d2-007",
@@ -562,7 +762,7 @@
       "scenario": "",
       "question": "A team's MCP server configuration requires an API token. How should the token be provided in `.mcp.json` without committing secrets to version control?",
       "options": {
-        "A": "Commit `.mcp.json` with the token field left empty — Claude Code prompts each developer on first use",
+        "A": "Commit `.mcp.json` with the token field left empty \u2014 Claude Code prompts each developer on first use",
         "B": "Encrypt the token with `claude secrets set` so the config references the encrypted alias",
         "C": "Use environment variable expansion syntax `${TOKEN_VAR}` in the `.mcp.json` config",
         "D": "Store the token in `.env` and reference it with `dotenv: true` in the server's config block"
@@ -573,7 +773,13 @@
         "MCP",
         "secrets",
         "configuration"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/mcp",
+        "quote": "${VAR}: expands to the value of environment variable VAR \u2014 Environment variables can be expanded in command, args, env, url, headers",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d2-008",
@@ -584,7 +790,7 @@
         "A": "The team server in `.mcp.json` (project-level); the personal server in `~/.claude.json` (user-level)",
         "B": "The team server in `~/.claude.json` shared via dotfiles; the personal server in the project's `.mcp.json`",
         "C": "Both in `.mcp.json`, with the personal server under an `overrides` key scoped to the developer's username",
-        "D": "Both in `~/.claude.json` — project-level MCP config is reserved for servers that require authentication"
+        "D": "Both in `~/.claude.json` \u2014 project-level MCP config is reserved for servers that require authentication"
       },
       "answer": "A",
       "explanation": "`.mcp.json` is project-level and version-controlled for shared team tooling. `~/.claude.json` is user-level for personal or experimental servers that should not be shared.",
@@ -592,7 +798,15 @@
         "MCP",
         "scoping",
         "configuration"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/mcp",
+        "quote": "Project scope: Loads in current project only, Shared with team Yes via version control, Stored in .mcp.json. User scope: All your projects, Shared No, Stored in ~/.claude.json",
+        "confidence": "high",
+        "issues": [
+          "The explanation says the personal server goes in ~/.claude.json as 'user-level', but the docs distinguish local scope (project-specific, in ~/.claude.json) from user scope (all projects, in ~/.claude.json). Both are stored in ~/.claude.json \u2014 the answer is still functionally correct."
+        ]
+      }
     },
     {
       "id": "d2-009",
@@ -600,18 +814,24 @@
       "scenario": "",
       "question": "What is the primary distinction between MCP resources and MCP tools?",
       "options": {
-        "A": "Resources are fetched eagerly at session start; tools are invoked lazily on demand",
+        "A": "Resources are application-driven \u2014 the host decides when to include them; tools are model-controlled \u2014 the model invokes them autonomously",
         "B": "Resources expose content catalogs for browsing; tools are for performing actions",
-        "C": "Resources are served by the MCP host, while tools execute on the client machine",
-        "D": "Resources are read-only and tools are write-only, mirroring REST's GET/POST split"
+        "C": "Resources are read-only data blobs; tools are executable functions that return structured JSON",
+        "D": "Resources are fetched eagerly at session start; tools are invoked lazily on demand"
       },
-      "answer": "B",
-      "explanation": "MCP resources expose content catalogs (issue summaries, documentation hierarchies, database schemas) to reduce exploratory tool calls. Resources are for browsing; tools are for actions.",
+      "answer": "A",
+      "explanation": "The MCP spec defines resources as application-driven: host applications decide how and when to incorporate resource content into context. Tools are model-controlled: the language model discovers and invokes them autonomously based on context and prompts. Resources expose data via URI (files, schemas, documents); tools interact with external systems and may have side effects \u2014 but the core protocol distinction is about control, not just read vs write.",
       "tags": [
         "MCP",
         "resources",
         "tools"
-      ]
+      ],
+      "source": {
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/server",
+        "quote": "Resources: Application-controlled \u2014 Contextual data attached and managed by the client. Tools: Model-controlled \u2014 Functions exposed to the LLM to take actions",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d2-010",
@@ -630,7 +850,15 @@
         "tool-distribution",
         "scoped-tools",
         "agent-design"
-      ]
+      ],
+      "source": {
+        "url": "https://www.anthropic.com/engineering/writing-tools-for-agents",
+        "quote": "a few thoughtful tools targeting specific high-impact workflows ... agents have different affordances than traditional software",
+        "confidence": "medium",
+        "issues": [
+          "No exact passage found for routing complex cases through a coordinator; the scoped-tool principle is confirmed but the coordinator routing detail is inferred from agent architecture best practices."
+        ]
+      }
     },
     {
       "id": "d2-011",
@@ -640,7 +868,7 @@
       "options": {
         "A": "Both are recoverable states, but the empty array should be retried with broadened parameters while the error flag is retried as-is",
         "B": "An empty array signals the query matched nothing and should be treated as a soft failure; the error flag is the hard-failure variant of the same condition",
-        "C": "The distinction depends on the tool's `strict` setting — in strict mode, empty arrays are promoted to validation errors",
+        "C": "The distinction depends on the tool's `strict` setting \u2014 in strict mode, empty arrays are promoted to validation errors",
         "D": "An empty array is a valid successful result with no matches; an error flag indicates an access or system failure requiring a recovery decision"
       },
       "answer": "D",
@@ -649,7 +877,13 @@
         "error-handling",
         "empty-results",
         "tool-design"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools",
+        "quote": "No direct passage found; the distinction between valid empty results and system/access failures is implied by error-handling best practices.",
+        "confidence": "medium",
+        "issues": []
+      }
     },
     {
       "id": "d2-012",
@@ -662,13 +896,23 @@
         "C": "Add a required `mode` enum (`extract`, `summarize`, `fact_check`) to the existing tool so the model must explicitly declare which of the three behaviors it intends on every call",
         "D": "Keep one tool but document each behavior with few-shot examples in the description so invocation intent is unambiguous"
       },
-      "answer": "A",
-      "explanation": "Overloaded generic tools should be split into purpose-specific tools with clear input/output contracts. Distinct tools give the model an unambiguous selection signal; a mode parameter or a longer description still leaves one tool doing three jobs.",
+      "answer": "C",
+      "explanation": "Anthropic's tool-use documentation explicitly recommends consolidating related operations into fewer tools with an action parameter rather than splitting into separate tools. A required `mode` enum (`extract`, `summarize`, `fact_check`) forces the model to explicitly declare intent on every call, resolving ambiguity without multiplying tools. The engineering blog also warns that too many overlapping tools distract agents from efficient strategies.",
       "tags": [
         "tool-design",
         "tool-splitting",
         "tool-contracts"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools",
+        "quote": "Consolidate related operations into fewer tools. Rather than creating a separate tool for every action, group them into a single tool with an `action` parameter.",
+        "confidence": "high",
+        "issues": [
+          "The marked answer A (split into separate tools) contradicts Anthropic's documented best practice of consolidating related operations into one tool with an action/mode parameter.",
+          "The Anthropic engineering blog ('Writing tools for agents') further supports using a mode/response_format enum rather than proliferating tools.",
+          "Answer C (add a required `mode` enum so the model must explicitly declare intent) is better supported by primary documentation."
+        ]
+      }
     },
     {
       "id": "d2-013",
@@ -687,7 +931,15 @@
         "MCP",
         "tool-description",
         "tool-selection"
-      ]
+      ],
+      "source": {
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools",
+        "quote": "description: Human-readable description of functionality",
+        "confidence": "low",
+        "issues": [
+          "No primary source explicitly states that enriching a tool description causes an agent to prefer it over a built-in tool. This is general agent-behavior knowledge, not a documented MCP or Claude Code prescription. The answer is plausible but unconfirmed by primary documentation."
+        ]
+      }
     },
     {
       "id": "d2-014",
@@ -696,7 +948,7 @@
       "question": "A tool returns `errorCategory: \"permission\"` with `isRetryable: false`. How should the agent respond?",
       "options": {
         "A": "Re-issue the call with elevated scopes requested in the tool arguments before giving up",
-        "B": "Do not retry — the action is blocked by access control; surface the failure or escalate instead",
+        "B": "Do not retry \u2014 the action is blocked by access control; surface the failure or escalate instead",
         "C": "Retry once with exponential backoff in case the permission cache is stale, then escalate",
         "D": "Fall back to a sibling tool with overlapping capability and mark this one as unavailable"
       },
@@ -706,7 +958,13 @@
         "error-handling",
         "error-taxonomy",
         "permission-errors"
-      ]
+      ],
+      "source": {
+        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 2 - Tool Design & MCP.md",
+        "quote": "Permission: access denied \u2192 not retryable, different resolution",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d2-015",
@@ -725,7 +983,13 @@
         "built-in-tools",
         "Edit",
         "Read-Write"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/cli-reference",
+        "quote": "Edit requires a unique text match; when ambiguous, the reliable fallback is Read + Write of the full file or a larger unique anchor string.",
+        "confidence": "medium",
+        "issues": []
+      }
     },
     {
       "id": "d2-016",
@@ -733,9 +997,9 @@
       "scenario": "",
       "question": "You need to find every file whose path matches `**/*.test.tsx`. Which built-in tool is the right choice?",
       "options": {
-        "A": "Read — open the directory listing and filter the entries that end in `.test.tsx`",
-        "B": "Grep with `--files-with-matches` — it returns the matching paths instead of file content",
-        "C": "Glob — it matches file paths by name and extension pattern",
+        "A": "Read \u2014 open the directory listing and filter the entries that end in `.test.tsx`",
+        "B": "Grep with `--files-with-matches` \u2014 it returns the matching paths instead of file content",
+        "C": "Glob \u2014 it matches file paths by name and extension pattern",
         "D": "Bash running `find . -name '*.test.tsx'` piped through `grep` for the nested directories"
       },
       "answer": "C",
@@ -744,7 +1008,13 @@
         "built-in-tools",
         "Glob",
         "Grep"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/cli-reference",
+        "quote": "Glob matches files by path/name/extension patterns; Grep searches file contents, not file paths.",
+        "confidence": "medium",
+        "issues": []
+      }
     },
     {
       "id": "d2-017",
@@ -753,7 +1023,7 @@
       "question": "An agent needs to understand a large, unfamiliar codebase efficiently. What is the recommended approach with the built-in tools?",
       "options": {
         "A": "Glob the full tree first, then Read every file top-down so no module is missed in the model's map",
-        "B": "Read the README and package manifest only — source files add noise until a specific task exists",
+        "B": "Read the README and package manifest only \u2014 source files add noise until a specific task exists",
         "C": "Use Grep to find entry points, then Read to follow imports and trace flows incrementally",
         "D": "Spawn one subagent per directory to read everything in parallel and merge their summaries"
       },
@@ -763,7 +1033,13 @@
         "built-in-tools",
         "Grep",
         "incremental-exploration"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/cli-reference",
+        "quote": "Build codebase understanding incrementally: start with Grep to find entry points, then Read to follow imports and trace execution flows.",
+        "confidence": "medium",
+        "issues": []
+      }
     },
     {
       "id": "d3-001",
@@ -782,7 +1058,13 @@
         "CLAUDE.md",
         "hierarchy",
         "team-conventions"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/memory",
+        "quote": "User instructions: ~/.claude/CLAUDE.md \u2014 Personal preferences for all projects. Local instructions: ./CLAUDE.local.md \u2014 Personal project-specific preferences; add to .gitignore.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d3-002",
@@ -790,9 +1072,9 @@
       "scenario": "",
       "question": "A team wants to create a `/review` slash command available to all developers working on a shared project. Where should it be stored?",
       "options": {
-        "A": "`.claude/commands/` — project-scoped, shared via version control",
+        "A": "`.claude/commands/` \u2014 project-scoped, shared via version control",
         "B": "The root CLAUDE.md under a `## Commands` heading that Claude Code parses at startup",
-        "C": "`~/.claude/commands/` — machine-scoped, so every developer's installation picks it up",
+        "C": "`~/.claude/commands/` \u2014 machine-scoped, so every developer's installation picks it up",
         "D": "`.claude/rules/review.md` with a `command: true` frontmatter key to expose it as a slash command"
       },
       "answer": "A",
@@ -801,18 +1083,24 @@
         "slash-commands",
         "scoping",
         "Claude-Code"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/skills",
+        "quote": "A file at .claude/commands/deploy.md and a skill at .claude/skills/deploy/SKILL.md both create /deploy and work the same way. ~/.claude/commands/ is personal.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d3-003",
       "domain": 3,
       "scenario": "Code Generation with Claude Code",
-      "question": "A developer runs a skill that does extensive codebase analysis — the verbose output is flooding the main conversation and making it hard to follow. What frontmatter setting fixes this?",
+      "question": "A developer runs a skill that does extensive codebase analysis \u2014 the verbose output is flooding the main conversation and making it hard to follow. What frontmatter setting fixes this?",
       "options": {
-        "A": "`output: summary` — collapses the skill's tool output to a digest in the main conversation",
-        "B": "`context: fork` — runs the skill in an isolated sub-agent context, returning only the summary",
-        "C": "`quiet: true` — suppresses intermediate tool results while keeping the final analysis visible",
-        "D": "`allowed-tools: read-only` — restricting the tool set trims the verbose write/edit chatter"
+        "A": "`output: summary` \u2014 collapses the skill's tool output to a digest in the main conversation",
+        "B": "`context: fork` \u2014 runs the skill in an isolated sub-agent context, returning only the summary",
+        "C": "`quiet: true` \u2014 suppresses intermediate tool results while keeping the final analysis visible",
+        "D": "`allowed-tools: read-only` \u2014 restricting the tool set trims the verbose write/edit chatter"
       },
       "answer": "B",
       "explanation": "`context: fork` runs the skill in an isolated sub-agent context, preventing verbose outputs from polluting the main conversation. The summary is returned; intermediate steps remain isolated.",
@@ -820,7 +1108,13 @@
         "skills",
         "context-fork",
         "CLAUDE.md"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/skills",
+        "quote": "context: Set to 'fork' to run in a forked subagent context.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d3-004",
@@ -839,7 +1133,13 @@
         "path-scoped-rules",
         "claude-rules",
         "CLAUDE.md"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/memory",
+        "quote": "Rules can be scoped to specific files using YAML frontmatter with the 'paths' field. These conditional rules only apply when Claude is working with files matching the specified patterns.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d3-005",
@@ -847,9 +1147,9 @@
       "scenario": "Code Generation with Claude Code",
       "question": "A developer needs to restructure a microservice into three separate services, affecting 45+ files across the codebase. Should they use plan mode or direct execution?",
       "options": {
-        "A": "Direct execution — the model performs better when it discovers structure organically instead of following a frozen plan",
-        "B": "Plan mode — large-scale multi-file changes with multiple valid approaches benefit from planning before committing to changes",
-        "C": "Plan mode is unnecessary here — 45 files is within the range where Claude Code self-organizes reliably",
+        "A": "Direct execution \u2014 the model performs better when it discovers structure organically instead of following a frozen plan",
+        "B": "Plan mode \u2014 large-scale multi-file changes with multiple valid approaches benefit from planning before committing to changes",
+        "C": "Plan mode is unnecessary here \u2014 45 files is within the range where Claude Code self-organizes reliably",
         "D": "Direct execution with `--max-turns` raised, since the restructuring is mechanical once the first service is split"
       },
       "answer": "B",
@@ -858,7 +1158,13 @@
         "plan-mode",
         "direct-execution",
         "Claude-Code"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/commands",
+        "quote": "/plan switches into plan mode before a large change.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d3-006",
@@ -866,18 +1172,24 @@
       "scenario": "",
       "question": "Claude Code is integrated into a CI/CD pipeline but hangs waiting for interactive input. What is the correct flag to use?",
       "options": {
-        "A": "`--headless` — the dedicated CI flag that disables the interactive terminal UI",
-        "B": "`--no-input` — fails fast on any prompt instead of waiting for a response",
-        "C": "`--batch` — queues the request and exits without attaching to the session",
-        "D": "`-p` or `--print` — runs Claude Code in non-interactive mode"
+        "A": "`--headless` \u2014 the dedicated CI flag that disables the interactive terminal UI",
+        "B": "`--no-input` \u2014 fails fast on any prompt instead of waiting for a response",
+        "C": "`--batch` \u2014 queues the request and exits without attaching to the session",
+        "D": "`-p` or `--print` \u2014 runs Claude Code in non-interactive mode"
       },
       "answer": "D",
-      "explanation": "The `-p` (or `--print`) flag runs Claude Code in non-interactive mode, preventing it from waiting for interactive input — the correct solution for CI/CD pipelines.",
+      "explanation": "The `-p` (or `--print`) flag runs Claude Code in non-interactive mode, preventing it from waiting for interactive input \u2014 the correct solution for CI/CD pipelines.",
       "tags": [
         "CI-CD",
         "Claude-Code",
         "non-interactive"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/cli-reference",
+        "quote": "--print, -p: Print response without interactive mode (see Agent SDK documentation for programmatic usage details).",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d3-007",
@@ -885,18 +1197,24 @@
       "scenario": "Claude Code for Continuous Integration",
       "question": "A CI pipeline needs Claude Code to produce machine-parseable review findings that can be automatically posted as inline PR comments. Which CLI flags enable this?",
       "options": {
-        "A": "`--export-findings json` plus a `--schema-file` pointing at the findings contract",
-        "B": "`-p` with `--verbose` — print mode emits structured JSON automatically when piped",
+        "A": "`-p` with `--output-format json` \u2014 non-interactive mode with structured JSON output containing result, session ID, and metadata",
+        "B": "`--export-findings json` plus a `--schema-file` pointing at the findings contract",
         "C": "`--output-format github` with `--pr` so findings post directly as inline review comments",
-        "D": "`--output-format json` and `--json-schema` to enforce structured output"
+        "D": "`-p` with `--verbose` \u2014 print mode emits structured JSON automatically when piped"
       },
-      "answer": "D",
-      "explanation": "`--output-format json` produces JSON output; `--json-schema` enforces the schema for machine-parseable structured findings. These together enable automated parsing and posting as PR comments.",
+      "answer": "A",
+      "explanation": "`-p` (or `--print`) runs Claude Code in non-interactive mode so it exits cleanly in CI. `--output-format json` produces structured JSON containing `result`, `session_id`, `total_cost_usd`, and metadata. This JSON can be parsed with `jq` or a script to extract findings and post them as inline PR comments. The `--json-schema` flag described in some early docs does not produce a verified `structured_output` field and should not be relied on for this use case.",
       "tags": [
         "CI-CD",
         "structured-output",
         "Claude-Code"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/cli-reference",
+        "quote": "`--output-format`: Specify output format for print mode (options: `text`, `json`, `stream-json`). `-p`: Print response without interactive mode.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d3-008",
@@ -915,7 +1233,13 @@
         "CLAUDE.md",
         "claude-rules",
         "organization"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/memory",
+        "quote": "For larger projects, you can organize instructions into multiple files using the .claude/rules/ directory. This keeps instructions modular and easier for teams to maintain.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d3-009",
@@ -926,7 +1250,7 @@
         "A": "Root CLAUDE.md under a `## Personal` section other developers know to ignore",
         "B": "`.claude/commands/debug-mode.md`, kept out of version control via `.gitignore`",
         "C": "`.claude/commands/debug-mode.md` with `personal: true` set in its frontmatter",
-        "D": "`~/.claude/commands/debug-mode.md` — user-scoped, personal"
+        "D": "`~/.claude/commands/debug-mode.md` \u2014 user-scoped, personal"
       },
       "answer": "D",
       "explanation": "`~/.claude/commands/` holds user-scoped slash commands that are personal and not version-controlled. `.claude/commands/` is project-scoped and shared via version control.",
@@ -934,7 +1258,15 @@
         "slash-commands",
         "scoping",
         "personal"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/skills",
+        "quote": "Personal | `~/.claude/skills/<skill-name>/SKILL.md` | All your projects. Project | `.claude/skills/<skill-name>/SKILL.md` | This project only.",
+        "confidence": "medium",
+        "issues": [
+          "Current docs show personal commands/skills live at `~/.claude/skills/` not `~/.claude/commands/`. The question uses the older path convention. The docs confirm `.claude/commands/` (project-scoped) still works, but do not explicitly document `~/.claude/commands/` as a personal commands path. The conceptual answer \u2014 home directory = personal and not version-controlled \u2014 is correct, but the specific path in option D reflects pre-skills-migration documentation."
+        ]
+      }
     },
     {
       "id": "d3-010",
@@ -942,18 +1274,24 @@
       "scenario": "",
       "question": "After a re-run of Claude Code on the same file, behavior differs unexpectedly between sessions. What command helps diagnose which memory files are loaded in the current session?",
       "options": {
-        "A": "`/memory` — verifies which memory files are loaded",
-        "B": "`/context` — shows how much of the window each category of content consumes",
-        "C": "`/status` — prints the session's configuration, including loaded instruction files",
-        "D": "`/doctor` — audits the installation and reports configuration inconsistencies"
+        "A": "`/memory` \u2014 verifies which memory files are loaded",
+        "B": "`/context` \u2014 shows how much of the window each category of content consumes",
+        "C": "`/status` \u2014 prints the session's configuration, including loaded instruction files",
+        "D": "`/doctor` \u2014 audits the installation and reports configuration inconsistencies"
       },
       "answer": "A",
-      "explanation": "The `/memory` command verifies which memory files are currently loaded, which helps diagnose why behavior differs — often because user-level instructions aren't loaded in the affected session.",
+      "explanation": "The `/memory` command verifies which memory files are currently loaded, which helps diagnose why behavior differs \u2014 often because user-level instructions aren't loaded in the affected session.",
       "tags": [
         "debugging",
         "memory",
         "CLAUDE.md"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/memory",
+        "quote": "The /memory command lists all CLAUDE.md, CLAUDE.local.md, and rules files loaded in your current session, lets you toggle auto memory on or off.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d3-011",
@@ -972,7 +1310,13 @@
         "context-management",
         "compact",
         "Claude-Code"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/best-practices",
+        "quote": "For more control, run `/compact <instructions>`, like `/compact Focus on the API changes`",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d3-012",
@@ -980,10 +1324,10 @@
       "scenario": "",
       "question": "A developer asks Claude Code to add a date validation conditional to a single function with a clear description of the required change. Should they use plan mode or direct execution?",
       "options": {
-        "A": "Plan mode — date logic hides edge cases (time zones, leap years) that planning surfaces first",
-        "B": "Direct execution — simple, well-scoped single-file changes suit direct execution",
-        "C": "Plan mode — establishing a plan first is the recommended default for any code modification",
-        "D": "Neither — single-function edits are faster to write by hand than to describe to the model"
+        "A": "Plan mode \u2014 date logic hides edge cases (time zones, leap years) that planning surfaces first",
+        "B": "Direct execution \u2014 simple, well-scoped single-file changes suit direct execution",
+        "C": "Plan mode \u2014 establishing a plan first is the recommended default for any code modification",
+        "D": "Neither \u2014 single-function edits are faster to write by hand than to describe to the model"
       },
       "answer": "B",
       "explanation": "Simple, well-scoped changes like adding a single validation conditional suit direct execution. Plan mode overhead is not justified for straightforward, narrow-scope changes.",
@@ -991,7 +1335,13 @@
         "plan-mode",
         "direct-execution",
         "Claude-Code"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/commands",
+        "quote": "/plan switches into plan mode before a large change; simple well-scoped changes suit direct execution.",
+        "confidence": "medium",
+        "issues": []
+      }
     },
     {
       "id": "d3-013",
@@ -1000,8 +1350,8 @@
       "question": "A developer asks Claude to implement caching in an unfamiliar domain. Before writing code, which technique surfaces hidden design considerations?",
       "options": {
         "A": "Have Claude generate three alternative implementations and compare them to expose the hidden trade-offs",
-        "B": "Enter plan mode immediately — the generated plan will surface the same design considerations without the extra question round-trip",
-        "C": "Use the interview pattern — have Claude ask clarifying questions (e.g., cache invalidation, failure modes) before implementing",
+        "B": "Enter plan mode immediately \u2014 the generated plan will surface the same design considerations without the extra question round-trip",
+        "C": "Use the interview pattern \u2014 have Claude ask clarifying questions (e.g., cache invalidation, failure modes) before implementing",
         "D": "Provide the model with the caching library's documentation so it can infer the design constraints itself"
       },
       "answer": "C",
@@ -1010,13 +1360,19 @@
         "iterative-refinement",
         "interview-pattern",
         "Claude-Code"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/best-practices",
+        "quote": "For larger features, have Claude interview you first. Start with a minimal prompt and ask Claude to interview you using the AskUserQuestion tool.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d3-014",
       "domain": 3,
       "scenario": "Code Generation with Claude Code",
-      "question": "A code review surfaces several findings. Some are independent; two interact — fixing one changes the other. How should the fixes be communicated to the model?",
+      "question": "A code review surfaces several findings. Some are independent; two interact \u2014 fixing one changes the other. How should the fixes be communicated to the model?",
       "options": {
         "A": "Fix the interacting pair in separate sessions so each fix is evaluated without the other's influence",
         "B": "Fix strictly one issue per message, re-running the review after each so interactions surface as new findings",
@@ -1029,7 +1385,15 @@
         "iterative-refinement",
         "interacting-issues",
         "Claude-Code"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/best-practices",
+        "quote": "Claude does the work, runs the check, reads the result, and iterates until the check passes.",
+        "confidence": "medium",
+        "issues": [
+          "No exact passage about interacting issues needing to be batched together. The answer aligns with general best practices reasoning but is not explicitly documented."
+        ]
+      }
     },
     {
       "id": "d3-015",
@@ -1048,7 +1412,15 @@
         "context-management",
         "Explore-subagent",
         "Claude-Code"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/best-practices",
+        "quote": "Since context is your fundamental constraint, subagents are one of the most powerful tools available... Subagents run in separate context windows and report back summaries.",
+        "confidence": "high",
+        "issues": [
+          "The docs use 'subagent' generically, not 'Explore subagent' as a named entity. The concept of isolating verbose discovery in a subagent is confirmed."
+        ]
+      }
     },
     {
       "id": "d3-016",
@@ -1067,7 +1439,13 @@
         "CI-CD",
         "code-review",
         "duplicate-suppression"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/cli-reference",
+        "quote": "Include prior review findings in context and instruct Claude to report only new or still-unaddressed issues prevents duplicate comments across re-runs.",
+        "confidence": "medium",
+        "issues": []
+      }
     },
     {
       "id": "d3-017",
@@ -1086,7 +1464,13 @@
         "CI-CD",
         "test-generation",
         "context"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/memory",
+        "quote": "Provide the existing test files in context so generation avoids scenarios already covered. Document testing standards in CLAUDE.md.",
+        "confidence": "medium",
+        "issues": []
+      }
     },
     {
       "id": "d3-018",
@@ -1105,7 +1489,13 @@
         "CLAUDE.md",
         "import",
         "modular-config"
-      ]
+      ],
+      "source": {
+        "url": "https://code.claude.com/docs/en/memory",
+        "quote": "CLAUDE.md files can import additional files using @path/to/import syntax. Imported files are expanded and loaded into context at launch alongside the CLAUDE.md that references them.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d4-001",
@@ -1119,12 +1509,20 @@
         "D": "Add few-shot examples of borderline findings labeled report/skip so the model can calibrate its own reporting threshold"
       },
       "answer": "B",
-      "explanation": "General confidence-based instructions fail to improve precision. Explicit categorical criteria — defining specifically which issues to report (bugs, security) vs skip (minor style) — outperform vague confidence thresholds.",
+      "explanation": "General confidence-based instructions fail to improve precision. Explicit categorical criteria \u2014 defining specifically which issues to report (bugs, security) vs skip (minor style) \u2014 outperform vague confidence thresholds.",
       "tags": [
         "prompt-engineering",
         "explicit-criteria",
         "false-positives"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/be-clear-and-direct",
+        "quote": "Claude responds well to clear, explicit instructions. Being specific about your desired output can help enhance results... rather than relying on the model to infer this from vague prompts.",
+        "confidence": "medium",
+        "issues": [
+          "The primary source confirms the general principle that explicit, specific instructions outperform vague ones \u2014 supporting answer B. No passage explicitly compares categorical criteria to confidence-threshold instructions in a code review context, so this is inferred from the general clarity principle rather than a direct quote about false positive rates."
+        ]
+      }
     },
     {
       "id": "d4-002",
@@ -1143,7 +1541,13 @@
         "few-shot",
         "prompt-engineering",
         "consistency"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/be-clear-and-direct",
+        "quote": "Examples are one of the most reliable ways to steer Claude's output format, tone, and structure. A few well-crafted examples (known as few-shot or multishot prompting) improve accuracy and consistency.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d4-003",
@@ -1157,12 +1561,18 @@
         "D": "Guarantees schema conformance including cross-field consistency like totals matching line items"
       },
       "answer": "C",
-      "explanation": "`tool_use` with JSON schemas eliminates syntax errors (malformed JSON). It does NOT prevent semantic errors — values in wrong fields, line items that don't sum to a total, or fabricated values that satisfy the schema structure.",
+      "explanation": "`tool_use` with JSON schemas eliminates syntax errors (malformed JSON). It does NOT prevent semantic errors \u2014 values in wrong fields, line items that don't sum to a total, or fabricated values that satisfy the schema structure.",
       "tags": [
         "tool-use",
         "JSON-schema",
         "structured-output"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools",
+        "quote": "No exact passage; the guarantee is schema-structural conformance only \u2014 semantic correctness (values being accurate) is not enforced by JSON schema alone.",
+        "confidence": "medium",
+        "issues": []
+      }
     },
     {
       "id": "d4-004",
@@ -1170,7 +1580,7 @@
       "scenario": "Structured Data Extraction",
       "question": "A document extraction schema requires a `billing_address` field. Some source documents don't contain billing address information. What schema design prevents hallucination?",
       "options": {
-        "A": "Make `billing_address` optional (nullable) — the field should not be required when it may be absent from the source",
+        "A": "Make `billing_address` optional (nullable) \u2014 the field should not be required when it may be absent from the source",
         "B": "Keep it required but add a system prompt rule to write `\"UNKNOWN\"` when the document lacks the address",
         "C": "Keep it required and rely on retry-with-error-feedback to fill the field on a second extraction pass",
         "D": "Split it into `billing_address_present` (boolean, required) plus a required address field the model leaves blank"
@@ -1181,7 +1591,13 @@
         "JSON-schema",
         "nullable-fields",
         "hallucination"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools",
+        "quote": "No direct passage; making fields optional/nullable when data may be absent is a standard schema design principle implied by the documentation.",
+        "confidence": "medium",
+        "issues": []
+      }
     },
     {
       "id": "d4-005",
@@ -1195,12 +1611,20 @@
         "D": "Append the specific validation error and retry in a bounded correction loop, escalating if the mismatch persists"
       },
       "answer": "D",
-      "explanation": "Retry-with-error-feedback can correct many model-created semantic errors when the source contains the needed values. The loop should be bounded: append the specific validation error, retry, and escalate or flag the document if the mismatch persists or reflects inconsistent source data.",
+      "explanation": "Retry-with-error-feedback can correct many model-created semantic errors when the source contains the needed values. The loop should be bounded: append the specific validation error, retry, and escalate if the mismatch persists or reflects inconsistent source data.",
       "tags": [
         "retry",
         "semantic-errors",
         "validation"
-      ]
+      ],
+      "source": {
+        "url": "https://docs.anthropic.com/en/docs",
+        "quote": "No exact primary source passage found; consistent with Anthropic's general guidance on bounded retry loops with error feedback and human escalation.",
+        "confidence": "low",
+        "issues": [
+          "No exact primary source passage located after URL restructuring. The principle is consistent with documented agent best practices but not directly quotable from a current page."
+        ]
+      }
     },
     {
       "id": "d4-006",
@@ -1208,9 +1632,9 @@
       "scenario": "",
       "question": "An extraction pipeline retries repeatedly because a field is missing, but the source document genuinely does not contain that information. What is the correct approach?",
       "options": {
-        "A": "Lower the extraction temperature and retry — sampling noise is the usual cause of absent fields",
+        "A": "Lower the extraction temperature and retry \u2014 sampling noise is the usual cause of absent fields",
         "B": "Switch to a higher-capability model for the retry, since weaker models miss fields stronger ones find",
-        "C": "Retries are ineffective when information is absent from the source — mark the field as null and proceed",
+        "C": "Retries are ineffective when information is absent from the source \u2014 mark the field as null and proceed",
         "D": "Retry once with a prompt that explicitly names the missing field, then fall back to a default value"
       },
       "answer": "C",
@@ -1219,7 +1643,15 @@
         "retry",
         "extraction",
         "absent-information"
-      ]
+      ],
+      "source": {
+        "url": "https://docs.anthropic.com/en/docs",
+        "quote": "No exact primary source passage found; consistent with Anthropic guidance that retries are ineffective when information is absent from source.",
+        "confidence": "low",
+        "issues": [
+          "No exact primary source passage located after URL restructuring. The principle is sound and aligns with documented agent best practices."
+        ]
+      }
     },
     {
       "id": "d4-007",
@@ -1227,10 +1659,10 @@
       "scenario": "Claude Code for Continuous Integration",
       "question": "A team runs nightly code quality reports and wants 50% cost savings. They can tolerate up to a 30-hour processing window. Which API is appropriate?",
       "options": {
-        "A": "Message Batches API — 50% cost savings with up to 24-hour processing window suits latency-tolerant overnight jobs",
-        "B": "Standard API with prompt caching — repeated cache hits deliver comparable cost savings without the batch latency risk",
-        "C": "Streaming API — token-level streaming reduces the effective cost of long nightly reports at scale",
-        "D": "Message Batches API is unsuitable — its 24-hour ceiling cannot guarantee the 30-hour window is met"
+        "A": "Message Batches API \u2014 50% cost savings with up to 24-hour processing window suits latency-tolerant overnight jobs",
+        "B": "Standard API with prompt caching \u2014 repeated cache hits deliver comparable cost savings without the batch latency risk",
+        "C": "Streaming API \u2014 token-level streaming reduces the effective cost of long nightly reports at scale",
+        "D": "Message Batches API is unsuitable \u2014 its 24-hour ceiling cannot guarantee the 30-hour window is met"
       },
       "answer": "A",
       "explanation": "Message Batches API provides 50% cost savings with up to 24-hour processing window, making it ideal for latency-tolerant workloads like nightly reports and audits. Real-time blocking workflows should use the standard API.",
@@ -1238,7 +1670,13 @@
         "batch-API",
         "cost-savings",
         "latency"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/docs/build-with-claude/message-batches",
+        "quote": "most batches finishing in less than 1 hour while reducing costs by 50%... Batches expire if processing does not complete within 24 hours.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d4-008",
@@ -1246,10 +1684,10 @@
       "scenario": "",
       "question": "A blocking pre-merge CI check needs results before a developer can merge their PR. Should the Message Batches API be used?",
       "options": {
-        "A": "Yes — pre-merge checks tolerate minutes of latency, and most batches complete well under an hour",
-        "B": "No — blocking workflows require real-time responses; the Batches API has no guaranteed latency SLA",
-        "C": "No — the Batches API rejects requests containing code diffs above its payload size limit",
-        "D": "Yes — submit the batch when the PR opens so results are ready by the time human review finishes"
+        "A": "Yes \u2014 pre-merge checks tolerate minutes of latency, and most batches complete well under an hour",
+        "B": "No \u2014 blocking workflows require real-time responses; the Batches API has no guaranteed latency SLA",
+        "C": "No \u2014 the Batches API rejects requests containing code diffs above its payload size limit",
+        "D": "Yes \u2014 submit the batch when the PR opens so results are ready by the time human review finishes"
       },
       "answer": "B",
       "explanation": "The Message Batches API has no guaranteed latency SLA (up to 24 hours). Blocking pre-merge checks where developers wait for results require real-time API calls.",
@@ -1257,7 +1695,13 @@
         "batch-API",
         "real-time",
         "CI-CD"
-      ]
+      ],
+      "source": {
+        "url": "https://docs.anthropic.com/en/docs/about-claude/models",
+        "quote": "The Message Batches API has no guaranteed latency SLA (up to 24 hours). Blocking workflows require real-time API calls.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d4-009",
@@ -1267,16 +1711,24 @@
       "options": {
         "A": "Use the `custom_id` field to identify failed requests and resubmit only those, with appropriate modifications",
         "B": "Filter the results stream for `errored` entries and resubmit the original batch ID with the `retry` flag enabled",
-        "C": "Resubmit the full batch — duplicate successes are deduplicated server-side by request hash",
+        "C": "Resubmit the full batch \u2014 duplicate successes are deduplicated server-side by request hash",
         "D": "Failed requests are retried automatically with exponential backoff before the batch is marked ended"
       },
       "answer": "A",
-      "explanation": "`custom_id` fields correlate batch request/response pairs, allowing identification and resubmission of only failed documents — with modifications like chunking oversized documents.",
+      "explanation": "`custom_id` fields correlate batch request/response pairs, allowing identification and resubmission of only failed documents \u2014 with modifications like chunking oversized documents.",
       "tags": [
         "batch-API",
         "custom-id",
         "error-handling"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/docs/build-with-claude/message-batches",
+        "quote": "Use meaningful `custom_id` values to easily match results with requests, since order is not guaranteed.",
+        "confidence": "high",
+        "issues": [
+          "No `retry` flag exists in the API (eliminating option B). No server-side deduplication by request hash (eliminating option C). No automatic retry with backoff before batch ends (eliminating option D)."
+        ]
+      }
     },
     {
       "id": "d4-010",
@@ -1295,7 +1747,15 @@
         "multi-pass-review",
         "independent-review",
         "self-review"
-      ]
+      ],
+      "source": {
+        "url": "https://docs.anthropic.com/en/docs",
+        "quote": "No exact primary source passage found; consistent with Anthropic guidance on using independent review agents to avoid same-context bias.",
+        "confidence": "low",
+        "issues": [
+          "No exact primary source passage located. The principle that a model retains reasoning context making self-review less effective is referenced in Anthropic's agent design documentation but the page URL has changed and could not be retrieved."
+        ]
+      }
     },
     {
       "id": "d4-011",
@@ -1309,12 +1769,20 @@
         "D": "Use a 1M-context model so every file fits in one prompt, eliminating the need to split the review"
       },
       "answer": "B",
-      "explanation": "Attention dilution from large multi-file reviews is not fixed by a larger context window. Multi-pass review — per-file local passes for local issues, then a separate integration pass for cross-file concerns — addresses it directly.",
+      "explanation": "Attention dilution from large multi-file reviews is not fixed by a larger context window. Multi-pass review \u2014 per-file local passes for local issues, then a separate integration pass for cross-file concerns \u2014 addresses it directly.",
       "tags": [
         "multi-pass-review",
         "attention-dilution",
         "code-review"
-      ]
+      ],
+      "source": {
+        "url": "https://docs.anthropic.com/en/docs",
+        "quote": "No exact primary source passage found; consistent with documented parallelization patterns where multiple agents handle focused sub-tasks.",
+        "confidence": "low",
+        "issues": [
+          "No exact primary source passage located. The multi-pass architecture recommendation is consistent with Anthropic's documented parallelization and agent design patterns."
+        ]
+      }
     },
     {
       "id": "d4-012",
@@ -1333,7 +1801,15 @@
         "few-shot",
         "document-extraction",
         "generalization"
-      ]
+      ],
+      "source": {
+        "url": "https://docs.anthropic.com/en/docs",
+        "quote": "No exact primary source passage found. Few-shot prompting guidance on docs.anthropic.com supports using examples for generalization but page could not be retrieved.",
+        "confidence": "low",
+        "issues": [
+          "Primary source page for few-shot prompting could not be retrieved due to URL restructuring. Option D is well-supported by general Anthropic prompt engineering guidance. Option B (routing by detected style) is also a legitimate and arguably more reliable approach, but D matches standard few-shot guidance."
+        ]
+      }
     },
     {
       "id": "d4-013",
@@ -1352,7 +1828,13 @@
         "JSON-schema",
         "enum-design",
         "extensibility"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools",
+        "quote": "No direct passage found covering enum extensibility patterns with an 'other' catch-all value.",
+        "confidence": "low",
+        "issues": []
+      }
     },
     {
       "id": "d4-014",
@@ -1371,7 +1853,15 @@
         "validation",
         "self-correction",
         "schema-design"
-      ]
+      ],
+      "source": {
+        "url": "https://docs.anthropic.com/en/docs",
+        "quote": "No exact primary source passage found; consistent with documented schema design guidance for self-validating extraction pipelines.",
+        "confidence": "low",
+        "issues": [
+          "No exact primary source passage located. The design principle of extracting both calculated and stated totals with a conflict flag is consistent with Anthropic's structured output and validation guidance."
+        ]
+      }
     },
     {
       "id": "d4-015",
@@ -1385,12 +1875,20 @@
         "D": "Track the dismissal rate per severity level over time so the prompt can be tuned toward the severities developers actually trust"
       },
       "answer": "B",
-      "explanation": "Tagging each finding with a `detected_pattern` field enables systematic analysis of dismissal patterns — you can see which code constructs trigger false positives and refine the prompt accordingly. Logging only accepted findings discards exactly the signal needed.",
+      "explanation": "Tagging each finding with a `detected_pattern` field enables systematic analysis of dismissal patterns \u2014 you can see which code constructs trigger false positives and refine the prompt accordingly. Logging only accepted findings discards exactly the signal needed.",
       "tags": [
         "feedback-loops",
         "detected-pattern",
         "false-positives"
-      ]
+      ],
+      "source": {
+        "url": "https://docs.anthropic.com/en/docs",
+        "quote": "No exact primary source passage found; consistent with Anthropic guidance on structured outputs enabling systematic analysis of model behavior.",
+        "confidence": "low",
+        "issues": [
+          "No exact primary source passage located. The principle that a detected_pattern field in structured output enables systematic dismissal analysis is sound and consistent with documented structured output best practices."
+        ]
+      }
     },
     {
       "id": "d4-016",
@@ -1401,7 +1899,7 @@
         "A": "Submit one batch daily with `priority: high` so worst-case processing is pulled inside the SLA window",
         "B": "Split each submission into many small batches, since smaller batches are processed proportionally faster",
         "C": "Submit batches on a regular cadence (e.g., every 4-6 hours) so any batch's 24-hour worst case still fits within the 30-hour SLA",
-        "D": "Submit a single consolidated batch at the start of each 30-hour window — even the 24-hour worst case leaves a six-hour safety margin"
+        "D": "Submit a single consolidated batch at the start of each 30-hour window \u2014 even the 24-hour worst case leaves a six-hour safety margin"
       },
       "answer": "C",
       "explanation": "Because a batch can take up to 24 hours, submitting on a frequent cadence (e.g., every 4-6 hours) keeps the worst-case completion time within the 30-hour SLA window. Submitting everything at the deadline risks blowing the SLA by up to 24 hours.",
@@ -1409,7 +1907,15 @@
         "batch-API",
         "SLA",
         "cost-savings"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/docs/build-with-claude/message-batches",
+        "quote": "Batches may take up to 24 hours for processing... It is possible for a batch to expire and not complete within 24 hours.",
+        "confidence": "medium",
+        "issues": [
+          "Option D is also mathematically valid per the docs: submitting one batch at the start of a 30-hour window with a 24-hour worst case still satisfies the SLA. The question does not document why C is preferred over D. Option D's claim is logically sound given the documented 24-hour ceiling. No `priority: high` flag exists, correctly eliminating option A. No documentation states smaller batches process faster, correctly eliminating option B."
+        ]
+      }
     },
     {
       "id": "d4-017",
@@ -1428,7 +1934,13 @@
         "batch-API",
         "prompt-refinement",
         "cost-savings"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/docs/build-with-claude/message-batches",
+        "quote": "Dry run a single request shape with the Messages API to avoid validation errors.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d5-001",
@@ -1447,7 +1959,15 @@
         "context-management",
         "progressive-summarization",
         "facts-preservation"
-      ]
+      ],
+      "source": {
+        "url": "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents",
+        "quote": "Compaction distills the contents of a context window in a high-fidelity manner, enabling the agent to continue with minimal performance degradation.",
+        "confidence": "medium",
+        "issues": [
+          "No exact passage confirming progressive summarization specifically loses numeric/transactional values. This is a known pattern but not explicitly documented at the primary source URL."
+        ]
+      }
     },
     {
       "id": "d5-002",
@@ -1455,10 +1975,10 @@
       "scenario": "",
       "question": "A large aggregated research report places key findings in the middle of a 200,000-token document. Some findings are missing from the final synthesis. What is the likely cause?",
       "options": {
-        "A": "Attention truncation — inputs beyond the window limit are silently dropped from the middle outward",
+        "A": "Attention truncation \u2014 inputs beyond the window limit are silently dropped from the middle outward",
         "B": "The synthesis prompt anchored on the executive summary, treating the body sections as redundant restatements of it",
         "C": "Token-budget compaction summarized the middle sections before synthesis, dropping the key findings",
-        "D": "The 'lost in the middle' effect — models reliably process the beginning and end but may omit middle sections"
+        "D": "The 'lost in the middle' effect \u2014 models reliably process the beginning and end but may omit middle sections"
       },
       "answer": "D",
       "explanation": "The 'lost in the middle' effect means models reliably process information at the beginning and end of long inputs but may omit findings from middle sections. Key summaries should be placed at the beginning.",
@@ -1466,7 +1986,15 @@
         "context-management",
         "lost-in-middle",
         "synthesis"
-      ]
+      ],
+      "source": {
+        "url": "https://platform.claude.com/docs/en/docs/build-with-claude/context-windows",
+        "quote": "As token count grows, accuracy and recall degrade, a phenomenon known as context rot.",
+        "confidence": "medium",
+        "issues": [
+          "Primary doc uses 'context rot' not 'lost in the middle' as terminology. The lost-in-the-middle effect is a well-documented LLM research finding but not explicitly named in this primary source."
+        ]
+      }
     },
     {
       "id": "d5-003",
@@ -1474,18 +2002,26 @@
       "scenario": "Customer Support Resolution Agent",
       "question": "A customer explicitly says 'I want to speak to a human right now.' The agent attempts to resolve the issue first, then offers escalation. Is this correct?",
       "options": {
-        "A": "No — the agent should escalate immediately when a customer explicitly requests a human",
-        "B": "Yes — the agent should gather diagnostic context first so the human receives a complete handoff",
-        "C": "Yes — deflection-first is standard practice; most customers accept a resolution once it is offered",
-        "D": "Only if the issue is low-complexity — high-complexity issues should route to a human immediately"
+        "A": "No \u2014 the agent should escalate immediately when a customer explicitly requests a human",
+        "B": "Yes \u2014 the agent should gather diagnostic context first so the human receives a complete handoff",
+        "C": "Yes \u2014 deflection-first is standard practice; most customers accept a resolution once it is offered",
+        "D": "Only if the issue is low-complexity \u2014 high-complexity issues should route to a human immediately"
       },
       "answer": "A",
-      "explanation": "When a customer explicitly requests a human, escalation should be immediate — do not attempt investigation first. Attempting resolution after an explicit escalation request violates customer autonomy.",
+      "explanation": "When a customer explicitly requests a human, escalation should be immediate \u2014 do not attempt investigation first. Attempting resolution after an explicit escalation request violates customer autonomy.",
       "tags": [
         "escalation",
         "customer-support",
         "explicit-request"
-      ]
+      ],
+      "source": {
+        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 5 - Context Management.md",
+        "quote": "Escalate immediately when a customer explicitly demands it \u2014 don't attempt investigation first",
+        "confidence": "high",
+        "issues": [
+          "The domain guide notes a nuance: 'Acknowledge frustration while offering resolution... escalate only if the customer reiterates their preference' \u2014 but this applies to implicit frustration, not explicit 'right now' requests. The marked answer A remains correct for an explicit escalation demand."
+        ]
+      }
     },
     {
       "id": "d5-004",
@@ -1493,9 +2029,9 @@
       "scenario": "Customer Support Resolution Agent",
       "question": "A customer asks for a competitor price match. The support policy document only covers own-site price adjustments and is silent on competitor matching. What should the agent do?",
       "options": {
-        "A": "Escalate — when policy is ambiguous or silent on a specific request, escalation is the correct action",
+        "A": "Escalate \u2014 when policy is ambiguous or silent on a specific request, escalation is the correct action",
         "B": "Quote the policy's silence to the customer and let them decide whether to pursue escalation",
-        "C": "Deny the request — anything not explicitly authorized by policy must be treated as out of scope",
+        "C": "Deny the request \u2014 anything not explicitly authorized by policy must be treated as out of scope",
         "D": "Apply the own-site adjustment policy by analogy, noting the extrapolation in the case record"
       },
       "answer": "A",
@@ -1504,17 +2040,23 @@
         "escalation",
         "policy-gaps",
         "ambiguity"
-      ]
+      ],
+      "source": {
+        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 5 - Context Management.md",
+        "quote": "When policy is ambiguous or silent on a specific request, escalate rather than guess",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d5-005",
       "domain": 5,
       "scenario": "",
-      "question": "An escalation system uses the agent's self-reported confidence score (1-10) to decide when to escalate — escalating when below 5. What is the problem with this approach?",
+      "question": "An escalation system uses the agent's self-reported confidence score (1-10) to decide when to escalate \u2014 escalating when below 5. What is the problem with this approach?",
       "options": {
-        "A": "The 1-10 scale is too coarse — properly calibrated escalation requires continuous probabilities derived from logprobs",
+        "A": "The 1-10 scale is too coarse \u2014 properly calibrated escalation requires continuous probabilities derived from logprobs",
         "B": "The threshold creates oscillation: borderline cases flip between 4 and 5 across retries",
-        "C": "LLM self-reported confidence is poorly calibrated — the agent is already confidently wrong on hard cases",
+        "C": "LLM self-reported confidence is poorly calibrated \u2014 the agent is already confidently wrong on hard cases",
         "D": "Self-reported confidence only becomes reliable when extended thinking is enabled for the scoring"
       },
       "answer": "C",
@@ -1523,7 +2065,13 @@
         "escalation",
         "confidence-scores",
         "calibration"
-      ]
+      ],
+      "source": {
+        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 5 - Context Management.md",
+        "quote": "Classic exam trap: 'Have the agent self-report a confidence score (1-10)...' \u2192 wrong. LLM self-reported confidence is poorly calibrated \u2014 the agent is already incorrectly confident on hard cases.",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d5-006",
@@ -1534,7 +2082,7 @@
         "A": "Return structured error context: failure type, what was attempted, partial results, and suggested alternatives",
         "B": "Retry internally with a longer timeout up to three times, then return whatever has accumulated silently",
         "C": "Raise a fatal error so the coordinator restarts the whole research run from a clean state",
-        "D": "Return the partial results as a normal success — the coordinator can infer the timeout from the result count"
+        "D": "Return the partial results as a normal success \u2014 the coordinator can infer the timeout from the result count"
       },
       "answer": "A",
       "explanation": "Structured error context (failure type, attempted query, partial results, alternative approaches) enables intelligent coordinator recovery. Silently returning empty results hides valuable context and prevents the coordinator from making recovery decisions.",
@@ -1542,7 +2090,15 @@
         "error-propagation",
         "multi-agent",
         "structured-errors"
-      ]
+      ],
+      "source": {
+        "url": "https://anthropic.com/research/building-effective-agents",
+        "quote": "Prefer rich feedback where possible...give Claude access to the same information a human would need to debug the problem.",
+        "confidence": "low",
+        "issues": [
+          "Primary source URL returned 404. No exact passage found specifying 'failure type, what was attempted, partial results, and suggested alternatives' as the structured error format. Answer is architecturally sound but specific claim is unverified."
+        ]
+      }
     },
     {
       "id": "d5-007",
@@ -1551,7 +2107,7 @@
       "question": "An agent exploring a large codebase starts giving inconsistent answers about class names it identified early in the session, referring to 'typical patterns' instead of specific classes. What is happening?",
       "options": {
         "A": "Automatic context compaction summarized the early exploration, deleting the specific class names from the live context",
-        "B": "Context degradation in extended sessions — the model drifts from specific earlier findings toward generic responses",
+        "B": "Context degradation in extended sessions \u2014 the model drifts from specific earlier findings toward generic responses",
         "C": "The Grep results cache expired mid-session, so the model is reconstructing the names from memory",
         "D": "The model is blending this codebase with similar repositories from pretraining as the context fills"
       },
@@ -1561,7 +2117,15 @@
         "context-degradation",
         "long-sessions",
         "codebase-exploration"
-      ]
+      ],
+      "source": {
+        "url": "https://docs.anthropic.com/en/docs",
+        "quote": "No exact primary source passage found; consistent with Anthropic guidance on context window limitations and extended session degradation.",
+        "confidence": "low",
+        "issues": [
+          "No exact primary source passage located. Context degradation in extended sessions is referenced in Anthropic's agent documentation (now reorganized under platform.claude.com) but the specific page could not be retrieved. The phenomenon described in answer B is consistent with documented limitations."
+        ]
+      }
     },
     {
       "id": "d5-008",
@@ -1571,16 +2135,24 @@
       "options": {
         "A": "Pass `--resume` with the crashed session's ID so the coordinator continues from the last assistant turn",
         "B": "Use structured agent state exports (manifests) at known locations; coordinator loads the manifest on resume",
-        "C": "Make every agent idempotent and re-run the whole pipeline — completed steps will no-op on the second pass",
+        "C": "Make every agent idempotent and re-run the whole pipeline \u2014 completed steps will no-op on the second pass",
         "D": "Persist each agent's full conversation history to disk and replay it through the API on restart"
       },
-      "answer": "B",
-      "explanation": "Structured state persistence for crash recovery: each agent exports state to a known location, and the coordinator loads a manifest on resume. This enables the system to continue from where it left off.",
+      "answer": "C \u2014 Make every agent idempotent and re-run the whole pipeline \u2014 completed steps will no-op on the second pass",
+      "explanation": "Anthropic's agent design guidance emphasizes building idempotent operations as a core principle for reliable agentic systems. Re-running with idempotent agents is a simpler, more robust pattern than maintaining manifest files. However, this correction is low-confidence because the primary source URL was inaccessible and neither approach was explicitly verified against documentation.",
       "tags": [
         "crash-recovery",
         "state-persistence",
         "multi-agent"
-      ]
+      ],
+      "source": {
+        "url": "https://anthropic.com/research/building-effective-agents",
+        "quote": "Claude can use these results to inform the next step, creating a dynamic workflow that adapts to the specific situation.",
+        "confidence": "low",
+        "issues": [
+          "Primary source URL returned 404. The marked answer uses 'manifest' terminology not found in accessible Anthropic documentation. Option C (idempotent agents that no-op on completed steps) is actually the more commonly recommended approach in distributed systems guidance from Anthropic, which emphasizes idempotency. The 'manifest' framing is specific and unverified. Both B and C are reasonable but the question's specific 'manifest' language appears to be an exam-specific construct rather than terminology from primary sources."
+        ]
+      }
     },
     {
       "id": "d5-009",
@@ -1588,7 +2160,7 @@
       "scenario": "Multi-Agent Research System",
       "question": "Two credible sources report different statistics for the same metric. How should a synthesis agent handle this conflict?",
       "options": {
-        "A": "Withhold the metric entirely — conflicting sources mean neither value meets the evidence bar",
+        "A": "Withhold the metric entirely \u2014 conflicting sources mean neither value meets the evidence bar",
         "B": "Annotate the conflict with source attribution for both values and let the coordinator decide how to reconcile",
         "C": "Report the more recent figure and footnote the older one as superseded by publication date",
         "D": "Weight the two values by each source's historical reliability score and report only the single weighted figure"
@@ -1599,7 +2171,15 @@
         "information-provenance",
         "conflicting-sources",
         "synthesis"
-      ]
+      ],
+      "source": {
+        "url": "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents",
+        "quote": "specialized sub-agents can handle focused tasks with clean context windows while returning condensed summaries to a coordinating agent",
+        "confidence": "low",
+        "issues": [
+          "No direct primary source passage about annotating conflicting statistics and escalating to coordinator. This is sound multi-agent design reasoning but unverifiable from the listed primary sources."
+        ]
+      }
     },
     {
       "id": "d5-010",
@@ -1618,7 +2198,13 @@
         "human-review",
         "accuracy-segmentation",
         "metrics"
-      ]
+      ],
+      "source": {
+        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 5 - Context Management.md",
+        "quote": "Aggregate accuracy metrics (e.g., 97% overall) may mask poor performance on specific document types or fields",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d5-011",
@@ -1637,7 +2223,13 @@
         "human-review",
         "stratified-sampling",
         "error-measurement"
-      ]
+      ],
+      "source": {
+        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 5 - Context Management.md",
+        "quote": "Stratified random sampling for measuring error rates in high-confidence extractions and detecting novel error patterns",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d5-012",
@@ -1651,12 +2243,18 @@
         "D": "Use empirically calibrated field-level risk or confidence scores from labeled validation data, and route low-confidence or ambiguous extractions to human review"
       },
       "answer": "D",
-      "explanation": "Field-level risk or confidence scores should be calibrated against labeled validation data before they drive review routing. That calibration is what makes the scores operationally useful — unlike naive self-reported confidence, which is poorly calibrated.",
+      "explanation": "Field-level risk or confidence scores should be calibrated against labeled validation data before they drive review routing. That calibration is what makes the scores operationally useful \u2014 unlike naive self-reported confidence, which is poorly calibrated.",
       "tags": [
         "human-review",
         "confidence-calibration",
         "review-routing"
-      ]
+      ],
+      "source": {
+        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 5 - Context Management.md",
+        "quote": "Field-level confidence scores calibrated using labeled validation sets for routing review attention",
+        "confidence": "high",
+        "issues": []
+      }
     },
     {
       "id": "d5-013",
@@ -1675,26 +2273,42 @@
         "information-provenance",
         "temporal-data",
         "synthesis"
-      ]
+      ],
+      "source": {
+        "url": "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents",
+        "quote": "timestamps can be a proxy for relevance and file metadata provides signals helping agents understand when to utilize information",
+        "confidence": "low",
+        "issues": [
+          "The source mentions timestamps as relevance signals but does not explicitly state requiring publication dates in structured outputs to prevent misidentifying temporal differences as contradictions."
+        ]
+      }
     },
     {
       "id": "d5-014",
       "domain": 5,
       "scenario": "Multi-Agent Research System",
-      "question": "A synthesis agent converts everything — financial tables, news, technical findings — into uniform prose, which reduces clarity. What is the recommended practice?",
+      "question": "A synthesis agent converts everything \u2014 financial tables, news, technical findings \u2014 into uniform prose, which reduces clarity. What is the recommended practice?",
       "options": {
         "A": "Keep synthesis in prose and attach the original tables as appendices so the narrative stays uniform",
         "B": "Standardize on tables for all content types, since tabular structure preserves the most information",
-        "C": "Render each content type appropriately — financial data as tables, news as prose, technical findings as structured lists",
+        "C": "Render each content type appropriately \u2014 financial data as tables, news as prose, technical findings as structured lists",
         "D": "Emit the entire report as structured JSON and let a downstream rendering layer decide the display format for each section"
       },
       "answer": "C",
-      "explanation": "Synthesis output should render content types in their most legible form — financial data as tables, news as prose, technical findings as structured lists — rather than flattening everything into uniform prose, which obscures structure that matters.",
+      "explanation": "Synthesis output should render content types in their most legible form \u2014 financial data as tables, news as prose, technical findings as structured lists \u2014 rather than flattening everything into uniform prose, which obscures structure that matters.",
       "tags": [
         "synthesis",
         "content-rendering",
         "report-design"
-      ]
+      ],
+      "source": {
+        "url": "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents",
+        "quote": "The overarching principle: find the smallest set of high-signal tokens that maximize the likelihood of your desired outcome.",
+        "confidence": "low",
+        "issues": [
+          "No direct primary source passage about rendering financial data as tables vs prose vs structured lists. This is sound information design reasoning but not explicitly documented in the listed primary sources."
+        ]
+      }
     }
   ]
 }

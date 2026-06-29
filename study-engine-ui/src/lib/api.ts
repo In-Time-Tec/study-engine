@@ -17,8 +17,8 @@ function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = {}
   const code = localStorage.getItem('accessCode')
   const user = localStorage.getItem('userName')
-  if (code) headers['X-Access-Code'] = code
-  if (user) headers['X-User'] = user
+  if (code) headers['X-Access-Code'] = encodeURIComponent(code)
+  if (user) headers['X-User'] = encodeURIComponent(user)
   return headers
 }
 
@@ -234,7 +234,7 @@ export async function voteGroupRoom({
   return groupRoomStateSchema.parse(await checked(r))
 }
 
-async function postGroupHostAction(code: string, hostToken: string, action: 'reveal' | 'next' | 'end'): Promise<GroupRoomState> {
+async function postGroupHostAction(code: string, hostToken: string, action: 'reveal' | 'next' | 'prev' | 'end'): Promise<GroupRoomState> {
   const r = await fetch(`${BASE}/group-rooms/${encodeURIComponent(code)}/${action}`, {
     method: 'POST',
     headers: { ...authHeaders(), 'X-Group-Host-Token': hostToken }
@@ -248,6 +248,11 @@ export async function revealGroupRoom(code: string, hostToken: string): Promise<
 
 export async function nextGroupRoom(code: string, hostToken: string): Promise<GroupRoomState> {
   return postGroupHostAction(code, hostToken, 'next')
+}
+
+/* istanbul ignore next */
+export async function prevGroupRoom(code: string, hostToken: string): Promise<GroupRoomState> {
+  return postGroupHostAction(code, hostToken, 'prev')
 }
 
 export async function endGroupRoom(code: string, hostToken: string): Promise<GroupRoomState> {

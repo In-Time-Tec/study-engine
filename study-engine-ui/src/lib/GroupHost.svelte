@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { createGroupRoom, endGroupRoom, fetchGroupRoom, nextGroupRoom, revealGroupRoom } from './api'
+  import { createGroupRoom, endGroupRoom, fetchGroupRoom, nextGroupRoom, prevGroupRoom, revealGroupRoom } from './api'
   import type { GroupRoomState } from './types'
 
   let {
@@ -26,6 +26,7 @@
   let isRevealed = $derived(state?.status === 'revealed')
   let isEnded = $derived(state?.status === 'ended')
   let hasNext = $derived(Boolean(state && state.currentIndex < state.totalQuestions - 1))
+  let hasPrev = $derived(Boolean(state && state.currentIndex > 0))
 
   function browserJoinUrl(code: string, fallback: string): string {
     if (typeof window === 'undefined') return fallback
@@ -93,6 +94,19 @@
     error = null
     try {
       applyRoomState(await nextGroupRoom(roomCode, hostToken))
+    } catch (e) {
+      error = (e as Error).message
+    } finally {
+      busy = false
+    }
+  }
+
+  async function prev(): Promise<void> {
+    if (!roomCode || !hostToken || busy) return
+    busy = true
+    error = null
+    try {
+      applyRoomState(await prevGroupRoom(roomCode, hostToken))
     } catch (e) {
       error = (e as Error).message
     } finally {
@@ -213,6 +227,9 @@
         {/if}
 
         <div class="rating-row">
+          {#if hasPrev}
+            <button class="btn" disabled={busy} onclick={prev}>← Back</button>
+          {/if}
           {#if isVoting}
             <button class="btn btn-primary" disabled={busy} onclick={reveal}>Reveal</button>
           {:else if isRevealed && hasNext}

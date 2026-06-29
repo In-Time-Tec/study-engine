@@ -20,6 +20,19 @@ pub struct Question {
     /// the term under test would give the answer away.
     #[serde(default, rename = "glossaryExclude")]
     pub glossary_exclude: Vec<String>,
+    /// Primary source citation added by the validation workflow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<QuestionSource>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, TS)]
+#[ts(export)]
+pub struct QuestionSource {
+    pub url: String,
+    pub quote: String,
+    pub confidence: String,
+    #[serde(default)]
+    pub issues: Vec<String>,
 }
 
 /// A term of art defined once per bank and surfaced as a tooltip wherever the

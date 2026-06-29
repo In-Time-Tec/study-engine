@@ -18,6 +18,7 @@ ts-rs = "12"
 tower-http = { version = "0.6", features = ["cors", "fs"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+percent-encoding = "2"
 
 [dev-dependencies]
 assert_cmd = "2"

@@ -1203,6 +1203,7 @@ dependencies = [
  "clap",
  "fsrs",
  "http-body-util",
+ "percent-encoding",
  "predicates",
  "rand",
  "rusqlite",

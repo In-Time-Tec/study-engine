@@ -360,6 +360,35 @@ p  { color: var(--fg); }
   color: var(--fg);
 }
 
+.source-cite {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.source-link {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.source-link:hover { text-decoration: underline; }
+
+.source-quote {
+  font-size: 11px;
+  color: var(--dim);
+  font-style: italic;
+  line-height: 1.5;
+}
+
 .tags {
   display: flex;
   gap: 8px;

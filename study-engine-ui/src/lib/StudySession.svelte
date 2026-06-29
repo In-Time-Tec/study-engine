@@ -368,7 +368,17 @@
           <div class="streak-msg" transition:fade={{ duration: 200 }}>{streakMessage}</div>
         {/if}
 
-        <div class="explanation" transition:fade={{ duration: 120, delay: 80 }}>{q.explanation}</div>
+        <div class="explanation" transition:fade={{ duration: 120, delay: 80 }}>
+          {q.explanation}
+          {#if q.source?.url}
+            <div class="source-cite">
+              <a href={q.source.url} target="_blank" rel="noopener noreferrer" class="source-link">Source ↗</a>
+              {#if q.source.quote}
+                <span class="source-quote">"{q.source.quote}"</span>
+              {/if}
+            </div>
+          {/if}
+        </div>
 
         {#if saveError}
           <div class="empty">Save failed: {saveError}</div>

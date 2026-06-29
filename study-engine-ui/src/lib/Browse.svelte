@@ -118,7 +118,17 @@
               </ul>
               <div class="q-answer">
                 <strong style="color:var(--bright)">Answer: {q.answer}</strong>
-                <div style="margin-top:6px; color:var(--fg); line-height:1.7">{q.explanation}</div>
+                <div style="margin-top:6px; color:var(--fg); line-height:1.7">
+                  {q.explanation}
+                  {#if q.source?.url}
+                    <div class="source-cite">
+                      <a href={q.source.url} target="_blank" rel="noopener noreferrer" class="source-link">Source ↗</a>
+                      {#if q.source.quote}
+                        <span class="source-quote">"{q.source.quote}"</span>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
               </div>
               {#if q.tags && q.tags.length}
                 <div class="tags" style="margin-top:8px;">

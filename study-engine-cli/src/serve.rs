@@ -1,4 +1,5 @@
 use anyhow::Context;
+use percent_encoding::percent_decode_str;
 use axum::{
     Router,
     extract::{Path, Query, State},
@@ -20,6 +21,8 @@ use ts_rs::TS;
 use crate::db::{CardState, Db, GroupRoomRecord};
 use crate::progress::summarize_progress;
 use crate::questions::{Bank, GlossaryEntry, Question};
+#[cfg(test)]
+use crate::questions::QuestionSource;
 use crate::session::{ScheduledReview, apply_review, fsrs_next};
 use crate::study_plan::plan_study_session;
 
@@ -102,7 +105,7 @@ fn extract_user_key(headers: &HeaderMap) -> String {
     headers
         .get("X-User")
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.trim().to_lowercase())
+        .map(|s| percent_decode_str(s).decode_utf8_lossy().trim().to_lowercase())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "anonymous".to_string())
 }
@@ -113,10 +116,12 @@ async fn access_code_middleware(
     next: middleware::Next,
 ) -> Response {
     if let Ok(required) = std::env::var("STUDY_ACCESS_CODE") {
-        let provided = headers
+        let raw = headers
             .get("X-Access-Code")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
+        let provided_decoded = percent_decode_str(raw).decode_utf8_lossy().into_owned();
+        let provided = provided_decoded.as_str();
         if provided != required {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -1334,6 +1339,43 @@ async fn post_group_next(
     Ok(Json(result))
 }
 
+async fn post_group_prev(
+    State(state): State<Arc<AppState>>,
+    Path(code): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult<GroupRoomState> {
+    let dir = state.questions_dir.clone();
+    let db_path = state.db_path.clone();
+    let code = normalize_group_code(&code);
+    let header_token = host_token_from_headers(&headers).map(str::to_string);
+
+    let result = tokio::task::spawn_blocking(move || -> Result<GroupRoomState, ApiError> {
+        let db = Db::open_or_at(db_path.as_deref())?;
+        let room = db
+            .get_group_room(&code)?
+            .ok_or_else(|| ApiError::not_found("Group room not found"))?;
+        require_group_host(&room, header_token.as_deref())?;
+        if room.status == "ended" {
+            return Err(ApiError::bad_request("Group room has ended"));
+        }
+        if room.current_index == 0 {
+            return Err(ApiError::bad_request("Already at the first question"));
+        }
+        let prev_index = room.current_index - 1;
+        db.advance_group_room(&room.code, prev_index, "voting")?;
+
+        let room = db
+            .get_group_room(&code)?
+            .ok_or_else(|| ApiError::not_found("Group room not found"))?;
+        let bank = Bank::load(&dir, &room.cert)?;
+        build_group_room_state(&db, &room, &bank, None, true)
+    })
+    .await
+    .context("spawn_blocking panicked")??;
+
+    Ok(Json(result))
+}
+
 async fn post_group_end(
     State(state): State<Arc<AppState>>,
     Path(code): Path<String>,
@@ -1398,6 +1440,7 @@ pub async fn run(questions_dir: PathBuf, cert: String, port: u16) -> anyhow::Res
         .route("/api/group-rooms/{code}/vote", post(post_group_vote))
         .route("/api/group-rooms/{code}/reveal", post(post_group_reveal))
         .route("/api/group-rooms/{code}/next", post(post_group_next))
+        .route("/api/group-rooms/{code}/prev", post(post_group_prev))
         .route("/api/group-rooms/{code}/end", post(post_group_end))
         .layer(middleware::from_fn(access_code_middleware))
         .with_state(state);
@@ -1477,6 +1520,7 @@ mod ts_bindings {
             GroupVoteCount,
             GroupRoomState,
             CreateGroupRoomResponse,
+            QuestionSource,
         );
     }
 }
@@ -1607,6 +1651,7 @@ mod handler_tests {
             .route("/api/group-rooms/{code}/vote", post(post_group_vote))
             .route("/api/group-rooms/{code}/reveal", post(post_group_reveal))
             .route("/api/group-rooms/{code}/next", post(post_group_next))
+            .route("/api/group-rooms/{code}/prev", post(post_group_prev))
             .route("/api/group-rooms/{code}/end", post(post_group_end))
             .with_state(state);
 
