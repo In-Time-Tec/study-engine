@@ -2138,7 +2138,7 @@
         "C": "Make every agent idempotent and re-run the whole pipeline \u2014 completed steps will no-op on the second pass",
         "D": "Persist each agent's full conversation history to disk and replay it through the API on restart"
       },
-      "answer": "C \u2014 Make every agent idempotent and re-run the whole pipeline \u2014 completed steps will no-op on the second pass",
+      "answer": "C",
       "explanation": "Anthropic's agent design guidance emphasizes building idempotent operations as a core principle for reliable agentic systems. Re-running with idempotent agents is a simpler, more robust pattern than maintaining manifest files. However, this correction is low-confidence because the primary source URL was inaccessible and neither approach was explicitly verified against documentation.",
       "tags": [
         "crash-recovery",
