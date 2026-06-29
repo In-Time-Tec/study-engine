@@ -156,9 +156,9 @@
         "compliance"
       ],
       "source": {
-        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 1 - Agentic Architecture.md",
-        "quote": "Implement programmatic prerequisites that block downstream tool calls until earlier steps complete (e.g., block `process_refund` until `get_customer` returns verified ID)",
-        "confidence": "high",
+        "url": "https://docs.anthropic.com/en/docs/build-with-claude/tool-use/best-practices-for-tool-definitions",
+        "quote": "",
+        "confidence": "low",
         "issues": []
       }
     },
@@ -648,9 +648,9 @@
         "isRetryable"
       ],
       "source": {
-        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 2 - Tool Design & MCP.md",
-        "quote": "Transient: timeouts, service unavailability \u2192 retryable",
-        "confidence": "high",
+        "url": "https://docs.anthropic.com/en/docs/build-with-claude/tool-use/error-handling",
+        "quote": "",
+        "confidence": "low",
         "issues": []
       }
     },
@@ -960,9 +960,9 @@
         "permission-errors"
       ],
       "source": {
-        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 2 - Tool Design & MCP.md",
-        "quote": "Permission: access denied \u2192 not retryable, different resolution",
-        "confidence": "high",
+        "url": "https://docs.anthropic.com/en/docs/build-with-claude/tool-use/error-handling",
+        "quote": "",
+        "confidence": "low",
         "issues": []
       }
     },
@@ -2015,9 +2015,9 @@
         "explicit-request"
       ],
       "source": {
-        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 5 - Context Management.md",
-        "quote": "Escalate immediately when a customer explicitly demands it \u2014 don't attempt investigation first",
-        "confidence": "high",
+        "url": "https://docs.anthropic.com/en/docs/build-with-claude/agents",
+        "quote": "",
+        "confidence": "low",
         "issues": [
           "The domain guide notes a nuance: 'Acknowledge frustration while offering resolution... escalate only if the customer reiterates their preference' \u2014 but this applies to implicit frustration, not explicit 'right now' requests. The marked answer A remains correct for an explicit escalation demand."
         ]
@@ -2042,9 +2042,9 @@
         "ambiguity"
       ],
       "source": {
-        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 5 - Context Management.md",
-        "quote": "When policy is ambiguous or silent on a specific request, escalate rather than guess",
-        "confidence": "high",
+        "url": "https://docs.anthropic.com/en/docs/build-with-claude/agents",
+        "quote": "",
+        "confidence": "low",
         "issues": []
       }
     },
@@ -2067,9 +2067,9 @@
         "calibration"
       ],
       "source": {
-        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 5 - Context Management.md",
-        "quote": "Classic exam trap: 'Have the agent self-report a confidence score (1-10)...' \u2192 wrong. LLM self-reported confidence is poorly calibrated \u2014 the agent is already incorrectly confident on hard cases.",
-        "confidence": "high",
+        "url": "https://docs.anthropic.com/en/docs/build-with-claude/agents",
+        "quote": "",
+        "confidence": "low",
         "issues": []
       }
     },
@@ -2200,9 +2200,9 @@
         "metrics"
       ],
       "source": {
-        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 5 - Context Management.md",
-        "quote": "Aggregate accuracy metrics (e.g., 97% overall) may mask poor performance on specific document types or fields",
-        "confidence": "high",
+        "url": "https://docs.anthropic.com/en/docs/build-with-claude/agents",
+        "quote": "",
+        "confidence": "low",
         "issues": []
       }
     },
@@ -2225,9 +2225,9 @@
         "error-measurement"
       ],
       "source": {
-        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 5 - Context Management.md",
-        "quote": "Stratified random sampling for measuring error rates in high-confidence extractions and detecting novel error patterns",
-        "confidence": "high",
+        "url": "https://docs.anthropic.com/en/docs/build-with-claude/agents",
+        "quote": "",
+        "confidence": "low",
         "issues": []
       }
     },
@@ -2250,9 +2250,9 @@
         "review-routing"
       ],
       "source": {
-        "url": "/Users/tristan.johns/Documents/Work2026/Certification/CCA/CCA Domain 5 - Context Management.md",
-        "quote": "Field-level confidence scores calibrated using labeled validation sets for routing review attention",
-        "confidence": "high",
+        "url": "https://docs.anthropic.com/en/docs/build-with-claude/agents",
+        "quote": "",
+        "confidence": "low",
         "issues": []
       }
     },

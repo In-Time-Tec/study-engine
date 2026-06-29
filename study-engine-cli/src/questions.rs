@@ -173,8 +173,24 @@ impl Bank {
             if q.options.is_empty() {
                 bail!("Question {} must have at least one option", q.id);
             }
+            if q.answer.len() != 1 || !q.answer.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false) {
+                bail!(
+                    "Question {} answer must be a single uppercase letter, got: {:?}",
+                    q.id,
+                    q.answer
+                );
+            }
             if !q.options.contains_key(&q.answer) {
                 bail!("Question {} answer {} is not in options", q.id, q.answer);
+            }
+            if let Some(src) = &q.source {
+                if !src.url.is_empty() && !src.url.starts_with("http://") && !src.url.starts_with("https://") {
+                    bail!(
+                        "Question {} source URL must be http(s) or empty, got: {:?}",
+                        q.id,
+                        src.url
+                    );
+                }
             }
             for excl in &q.glossary_exclude {
                 if !surfaces.contains(&excl.trim().to_lowercase()) {
@@ -429,6 +445,43 @@ pub mod tests {
         let raw = TEST_BANK_JSON.replace(r#""answer": "C""#, r#""answer": "Z""#);
         let err = Bank::parse(&raw).unwrap_err();
         assert!(err.to_string().contains("is not in options"));
+    }
+
+    #[test]
+    fn parse_rejects_answer_with_full_option_text() {
+        // Regression: AI validation workflows previously wrote the full option
+        // text (e.g. "C — some long text") as the answer instead of just "C".
+        let raw = TEST_BANK_JSON.replace(
+            r#""answer": "C""#,
+            r#""answer": "C — Make every agent idempotent and re-run the whole pipeline""#,
+        );
+        let err = Bank::parse(&raw).unwrap_err();
+        assert!(
+            err.to_string().contains("single uppercase letter"),
+            "expected single-letter validation error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_rejects_local_file_source_url() {
+        // Regression: validation workflow agents sometimes used local file paths
+        // as source URLs instead of http(s) links.
+        let raw = TEST_BANK_JSON.replace(
+            r#""answer": "C""#,
+            r#""answer": "C", "source": {"url": "/Users/tristan/docs/CCA.md", "quote": "", "confidence": "low", "issues": []}"#,
+        );
+        let err = Bank::parse(&raw).unwrap_err();
+        assert!(
+            err.to_string().contains("http(s)"),
+            "expected http(s) validation error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_rejects_lowercase_answer() {
+        let raw = TEST_BANK_JSON.replace(r#""answer": "C""#, r#""answer": "c""#);
+        let err = Bank::parse(&raw).unwrap_err();
+        assert!(err.to_string().contains("single uppercase letter"));
     }
 
     #[test]
